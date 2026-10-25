@@ -1,14 +1,17 @@
-import { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Upload } from 'lucide-react'
 import Scene from './three/Scene.jsx'
 import { HikePanel, StylePanel, CameraBar } from './ui/Panels.jsx'
-import { parseGPX, projectTrack, resampleRoute, computeMetrics } from './lib/gpx.js'
-import { synthesizeField, fetchDEMField, sampleField } from './lib/terrain.js'
+import { AccountBar, SignInDialog, SaveControls, TrophyShelf } from './ui/Account.jsx'
+import { parseGPX } from './lib/gpx.js'
 import { DEMO_HIKES } from './lib/demoHikes.js'
-import { fetchMapTexture } from './lib/mapTiles.js'
 import { THEMES } from './lib/themes.js'
 import { fmtDist, fmtEle } from './ui/format.js'
+import { useDiorama } from './hooks/useDiorama.js'
+import { useAuth } from './data/auth.jsx'
+import { repo, hikeMeta, pickSavedSettings } from './data/repo.js'
 
 const DEFAULTS = {
   shape: 'hexagon',
@@ -22,8 +25,26 @@ const DEFAULTS = {
   labels: true,
 }
 
+// A hike the user tried to save while signed out survives the sign-in redirect here.
+const PENDING_KEY = 'tt:pending-save'
+const stashPending = (v) => { try { localStorage.setItem(PENDING_KEY, JSON.stringify(v)) } catch { /* storage blocked */ } }
+const takePending = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null')
+    localStorage.removeItem(PENDING_KEY)
+    return v
+  } catch { return null }
+}
+
+const sameSettings = (a, b) => JSON.stringify(pickSavedSettings(a)) === JSON.stringify(pickSavedSettings(b))
+
 export default function App() {
+  const { hikeId, shareSlug } = useParams()
+  const navigate = useNavigate()
+  const { user, ready, cloud } = useAuth()
+
   const [track, setTrack] = useState(null)
+  const [gpxText, setGpxText] = useState(null)
   const [activeDemo, setActiveDemo] = useState(null)
   const [error, setError] = useState(null)
   const [settings, setSettings] = useState(DEFAULTS)
@@ -31,77 +52,171 @@ export default function App() {
   const [preset, setPreset] = useState({ name: 'showcase', n: 0 })
   const [scrub, setScrub] = useState(null)
   const [animKey, setAnimKey] = useState(0)
-  const [dem, setDem] = useState({ status: 'idle', field: null })
   const [pageDrag, setPageDrag] = useState(false)
+
+  const [saved, setSaved] = useState(null) // the persisted Hike currently shown (yours), or null
+  const [busy, setBusy] = useState(false)
+  const [hikes, setHikes] = useState({ list: [], loading: false, error: null })
+  const [shelfOpen, setShelfOpen] = useState(false)
+  const [signIn, setSignIn] = useState({ open: false, reason: null })
+
   const glRef = useRef()
+  const pendingRef = useRef(null)
+  const readOnly = !!shareSlug
 
   const set = useCallback((patch) => setSettings((s) => ({ ...s, ...patch })), [])
-  const theme = THEMES[settings.theme]
+  const theme = THEMES[settings.theme] || THEMES.satellite
   const exag = useDeferredValue(settings.exaggeration)
+  const { geo, route, field, eles, metrics, demStatus, osm, wantsTiles } = useDiorama(track, settings, theme)
 
-  const loadText = useCallback((text, demoId = null) => {
+  // ---------------------------------------------------------------- loading
+
+  const showText = useCallback((text, demoId = null) => {
+    const t = parseGPX(text) // throws with a readable message
+    setTrack(t)
+    setGpxText(text)
+    setActiveDemo(demoId)
+    setError(null)
+    setAnimKey((k) => k + 1)
+    setPreset({ name: 'showcase', n: Date.now() })
+  }, [])
+
+  /** A brand-new hike (upload or demo): leaves any saved/shared URL. */
+  const startNew = useCallback((text, demoId = null) => {
     try {
-      const t = parseGPX(text)
-      setTrack(t)
-      setActiveDemo(demoId)
-      setError(null)
-      setAnimKey((k) => k + 1)
-      setPreset({ name: 'showcase', n: Date.now() })
+      showText(text, demoId)
+      setSaved(null)
+      if (hikeId || shareSlug) navigate('/')
     } catch (e) {
       setError(e.message || 'Could not read that GPX file.')
     }
-  }, [])
+  }, [showText, hikeId, shareSlug, navigate])
 
   const onFile = useCallback((file) => {
-    if (!/\.gpx$/i.test(file.name) && !/xml/.test(file.type)) {
-      setError('Please drop a .gpx file.')
+    if (!/\.gpx$/i.test(file.name) && !/xml/.test(file.type)) { setError('Please drop a .gpx file.'); return }
+    file.text().then((t) => startNew(t))
+  }, [startNew])
+
+  const onDemo = useCallback((d) => startNew(d.gpx(), d.id), [startNew])
+
+  // Route → what to show
+  useEffect(() => {
+    if (!ready) return
+    let cancelled = false
+    const fail = (e) => !cancelled && setError(e.message || 'Could not load that hike.')
+
+    if (hikeId) {
+      if (saved?.id === hikeId) return
+      if (cloud && !user) {
+        setError('Sign in to open this hike.')
+        setSignIn({ open: true, reason: 'This hike is saved to an account.' })
+        if (!track) showText(DEMO_HIKES[0].gpx(), DEMO_HIKES[0].id)
+        return
+      }
+      repo.get(hikeId).then(({ hike, gpxText: text }) => {
+        if (cancelled) return
+        showText(text)
+        setSettings({ ...DEFAULTS, ...hike.settings })
+        setSaved(hike)
+      }).catch(fail)
+    } else if (shareSlug) {
+      repo.getShared(shareSlug).then(({ hike, gpxText: text }) => {
+        if (cancelled) return
+        showText(text)
+        setSettings({ ...DEFAULTS, ...hike.settings })
+        setSaved(null)
+      }).catch((e) => { fail(e); if (!track) showText(DEMO_HIKES[0].gpx(), DEMO_HIKES[0].id) })
+    } else if (!track) {
+      const pending = takePending()
+      if (pending) {
+        try {
+          showText(pending.gpxText, pending.demoId)
+          setSettings({ ...DEFAULTS, ...pending.settings })
+          pendingRef.current = pending
+        } catch { showText(DEMO_HIKES[0].gpx(), DEMO_HIKES[0].id) }
+      } else {
+        showText(DEMO_HIKES[0].gpx(), DEMO_HIKES[0].id)
+      }
+    }
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hikeId, shareSlug, ready, user?.id])
+
+  useEffect(() => { document.title = track ? `${track.name} · Trail Trophy` : 'Trail Trophy' }, [track])
+
+  // ---------------------------------------------------------------- persistence
+
+  const refreshHikes = useCallback(async () => {
+    if (!user) { setHikes({ list: [], loading: false, error: null }); return }
+    setHikes((h) => ({ ...h, loading: true, error: null }))
+    try {
+      setHikes({ list: await repo.list(), loading: false, error: null })
+    } catch (e) {
+      setHikes({ list: [], loading: false, error: e.message })
+    }
+  }, [user])
+  useEffect(() => { refreshHikes() }, [refreshHikes])
+
+  // Signing out hides anything account-bound
+  useEffect(() => {
+    if (ready && cloud && !user && saved) { setSaved(null); if (hikeId) navigate('/') }
+  }, [ready, cloud, user, saved, hikeId, navigate])
+
+  const save = useCallback(async () => {
+    if (!track || !metrics || !gpxText) return
+    if (!user) {
+      stashPending({ gpxText, demoId: activeDemo, settings: pickSavedSettings(settings) })
+      // pending saves resume on '/', where the boot logic picks them up
+      setSignIn({ open: true, reason: 'Sign in to keep this hike in your trophy collection. It will be saved as soon as you are back.', redirectPath: '/' })
       return
     }
-    file.text().then((t) => loadText(t))
-  }, [loadText])
+    setBusy(true)
+    try {
+      const hike = await repo.create({ meta: hikeMeta(track, metrics), settings: pickSavedSettings(settings), gpxText })
+      setSaved(hike)
+      setHikes((h) => ({ ...h, list: [hike, ...h.list] }))
+      navigate(`/h/${hike.id}`)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }, [track, metrics, gpxText, user, activeDemo, settings, navigate])
 
-  const onDemo = useCallback((d) => loadText(d.gpx(), d.id), [loadText])
-
-  // Boot with the first demo so the diorama renders immediately
-  useEffect(() => { onDemo(DEMO_HIKES[0]) }, [onDemo])
-
-  // ---- Data pipeline ----
-  const geo = useMemo(() => (track ? projectTrack(track) : null), [track])
-  const route = useMemo(() => (geo ? resampleRoute(geo.world, 700) : null), [geo])
-  const synthField = useMemo(() => (track && geo ? synthesizeField(track, geo) : null), [track, geo])
-
+  // Finish a save that was interrupted by the sign-in redirect
   useEffect(() => {
-    if (settings.terrainSource !== 'dem' || !geo) { setDem({ status: 'idle', field: null }); return }
-    const ctrl = new AbortController()
-    setDem({ status: 'loading', field: null })
-    fetchDEMField(geo, ctrl.signal)
-      .then((field) => !ctrl.signal.aborted && setDem({ status: 'ok', field }))
-      .catch((e) => !ctrl.signal.aborted && (console.warn(e), setDem({ status: 'error', field: null })))
-    return () => ctrl.abort()
-  }, [settings.terrainSource, geo])
+    if (pendingRef.current && user && metrics && gpxText) {
+      pendingRef.current = null
+      save()
+    }
+  }, [user, metrics, gpxText, save])
 
-  const field = dem.field || synthField
+  const patchSaved = async (patch) => {
+    setBusy(true)
+    try {
+      const hike = await repo.update(saved.id, patch)
+      setSaved(hike)
+      setHikes((h) => ({ ...h, list: h.list.map((x) => (x.id === hike.id ? hike : x)) }))
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
-  // OpenStreetMap imagery for the map theme (keeps the last texture for this hike when switching themes)
-  const [osm, setOsm] = useState({ status: 'idle', texture: null })
-  const wantsTiles = !!theme.mapTiles
-  useEffect(() => {
-    if (!wantsTiles || !geo) return
-    const ctrl = new AbortController()
-    let tex = null
-    setOsm({ status: 'loading', texture: null })
-    fetchMapTexture(geo, ctrl.signal)
-      .then((t) => { tex = t; if (!ctrl.signal.aborted) setOsm({ status: 'ok', texture: t }) })
-      .catch((e) => !ctrl.signal.aborted && (console.warn(e), setOsm({ status: 'error', texture: null })))
-    return () => { ctrl.abort(); tex?.dispose() }
-  }, [wantsTiles, geo])
+  const removeHike = async (h) => {
+    try {
+      await repo.remove(h.id)
+      setHikes((s) => ({ ...s, list: s.list.filter((x) => x.id !== h.id) }))
+      if (saved?.id === h.id) { setSaved(null); navigate('/') }
+    } catch (e) {
+      setHikes((s) => ({ ...s, error: e.message }))
+    }
+  }
 
-  // Elevations used for metrics: GPX <ele> if present, otherwise sampled from the terrain
-  const eles = useMemo(() => {
-    if (!track || !geo || !field) return null
-    return track.hasEle ? track.points.map((p) => p.ele) : geo.world.map((p) => sampleField(field, p.x, p.z))
-  }, [track, geo, field])
-  const metrics = useMemo(() => (track && eles ? computeMetrics(track, eles) : null), [track, eles])
+  const dirty = !!saved && !sameSettings(settings, { ...DEFAULTS, ...saved.settings })
+
+  // ---------------------------------------------------------------- misc
 
   const plateSub = metrics
     ? `${fmtDist(metrics.distanceM, units).toUpperCase()}  ·  +${fmtEle(metrics.gainM, units).toUpperCase()}  ·  ▲ ${fmtEle(metrics.peakM, units).toUpperCase()}`
@@ -182,14 +297,36 @@ export default function App() {
           setUnits={setUnits}
           onFile={onFile}
           onDemo={onDemo}
-          activeDemo={activeDemo}
+          activeDemo={saved || readOnly ? null : activeDemo}
           onScrub={setScrub}
           error={error}
+          readOnly={readOnly}
+          onNew={() => onDemo(DEMO_HIKES[0])}
+          saveSlot={
+            <SaveControls
+              dark={dark}
+              saved={saved}
+              dirty={dirty}
+              readOnly={readOnly}
+              busy={busy}
+              onSave={save}
+              onRemix={save}
+              onUpdate={() => patchSaved({ settings: pickSavedSettings(settings) })}
+              onTogglePublic={() => patchSaved({ isPublic: !saved.isPublic })}
+            />
+          }
         />
-        <StylePanel dark={dark} settings={settings} set={set} demStatus={dem.status} osmStatus={wantsTiles ? osm.status : 'idle'} defaultOpen={!isNarrow} />
+        <StylePanel dark={dark} settings={settings} set={set} demStatus={demStatus} osmStatus={wantsTiles ? osm.status : 'idle'} defaultOpen={!isNarrow} />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-3">
+      <div className="pointer-events-none absolute inset-x-0 top-3 hidden justify-center px-3 lg:flex">
+        <AccountBar dark={dark} count={hikes.list.length} onOpenShelf={() => { setShelfOpen(true); refreshHikes() }} onSignIn={() => setSignIn({ open: true, reason: null })} />
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex flex-col items-center gap-2 px-3">
+        <div className="lg:hidden">
+          <AccountBar dark={dark} count={hikes.list.length} onOpenShelf={() => { setShelfOpen(true); refreshHikes() }} onSignIn={() => setSignIn({ open: true, reason: null })} />
+        </div>
         <CameraBar dark={dark} onPreset={(name) => setPreset({ name, n: Date.now() })} onSnapshot={snapshot} />
       </div>
 
@@ -202,6 +339,20 @@ export default function App() {
           </a>
         </div>
       )}
+
+      <SignInDialog open={signIn.open} reason={signIn.reason} redirectPath={signIn.redirectPath} dark={dark} onClose={() => setSignIn({ open: false, reason: null })} />
+      <TrophyShelf
+        open={shelfOpen}
+        onClose={() => setShelfOpen(false)}
+        dark={dark}
+        hikes={hikes.list}
+        loading={hikes.loading && hikes.list.length === 0}
+        error={hikes.error}
+        units={units}
+        currentId={saved?.id}
+        onOpen={(h) => { setShelfOpen(false); navigate(`/h/${h.id}`) }}
+        onDelete={removeHike}
+      />
 
       {pageDrag && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">

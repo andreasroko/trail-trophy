@@ -4,3 +4,6 @@ dist/
 *.log
 .env*
 .vite/
+!.env.example
+supabase/.temp/
+supabase/.branches/
