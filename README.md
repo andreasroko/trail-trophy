@@ -1,5 +1,7 @@
 # Trail Trophy — 3D Hiking Diorama
 
+**[▶ Live demo](https://andreasroko.github.io/trail-trophy/)**
+
 Drop a GPX file and get your hike as a miniature tabletop terrain diorama: a slice of earth with strata walls on a wooden plinth, a glowing trail ribbon, start/summit/finish markers, and a brass nameplate.
 
 Runs out of the box: **no API keys**. Terrain is procedural by default. An optional "Real DEM" mode pulls public AWS Terrarium elevation tiles, which need no key, and falls back to procedural terrain if you're offline.
