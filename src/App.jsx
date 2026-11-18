@@ -1,14 +1,13 @@
-import { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Upload } from 'lucide-react'
 import Scene from './three/Scene.jsx'
 import { HikePanel, StylePanel, CameraBar } from './ui/Panels.jsx'
-import { parseGPX, projectTrack, resampleRoute, computeMetrics } from './lib/gpx.js'
-import { synthesizeField, fetchDEMField, sampleField } from './lib/terrain.js'
+import { parseGPX } from './lib/gpx.js'
 import { DEMO_HIKES } from './lib/demoHikes.js'
-import { fetchMapTexture } from './lib/mapTiles.js'
 import { THEMES } from './lib/themes.js'
 import { fmtDist, fmtEle } from './ui/format.js'
+import { useDiorama } from './hooks/useDiorama.js'
 
 const DEFAULTS = {
   shape: 'hexagon',
@@ -23,15 +22,14 @@ const DEFAULTS = {
 }
 
 export default function App() {
-  const [track, setTrack] = useState(null)
-  const [activeDemo, setActiveDemo] = useState(null)
+  // The hike on screen: its raw GPX (kept so it can be saved later), the parsed track, and which demo it is
+  const [hike, setHike] = useState(null)
   const [error, setError] = useState(null)
   const [settings, setSettings] = useState(DEFAULTS)
   const [units, setUnits] = useState('metric')
   const [preset, setPreset] = useState({ name: 'showcase', n: 0 })
   const [scrub, setScrub] = useState(null)
   const [animKey, setAnimKey] = useState(0)
-  const [dem, setDem] = useState({ status: 'idle', field: null })
   const [pageDrag, setPageDrag] = useState(false)
   const glRef = useRef()
 
@@ -39,18 +37,26 @@ export default function App() {
   const theme = THEMES[settings.theme]
   const exag = useDeferredValue(settings.exaggeration)
 
+  /**
+   * Put a hike on screen. Throws a readable error if the GPX can't be parsed.
+   * `settings` (optional) restores a saved diorama style on top of the defaults.
+   */
+  const showHike = useCallback((gpxText, { demoId = null, settings: style = null } = {}) => {
+    const track = parseGPX(gpxText)
+    setHike({ gpxText, track, demoId })
+    if (style) setSettings({ ...DEFAULTS, ...style })
+    setError(null)
+    setAnimKey((k) => k + 1)
+    setPreset({ name: 'showcase', n: Date.now() })
+  }, [])
+
   const loadText = useCallback((text, demoId = null) => {
     try {
-      const t = parseGPX(text)
-      setTrack(t)
-      setActiveDemo(demoId)
-      setError(null)
-      setAnimKey((k) => k + 1)
-      setPreset({ name: 'showcase', n: Date.now() })
+      showHike(text, { demoId })
     } catch (e) {
       setError(e.message || 'Could not read that GPX file.')
     }
-  }, [])
+  }, [showHike])
 
   const onFile = useCallback((file) => {
     if (!/\.gpx$/i.test(file.name) && !/xml/.test(file.type)) {
@@ -65,43 +71,8 @@ export default function App() {
   // Boot with the first demo so the diorama renders immediately
   useEffect(() => { onDemo(DEMO_HIKES[0]) }, [onDemo])
 
-  // ---- Data pipeline ----
-  const geo = useMemo(() => (track ? projectTrack(track) : null), [track])
-  const route = useMemo(() => (geo ? resampleRoute(geo.world, 700) : null), [geo])
-  const synthField = useMemo(() => (track && geo ? synthesizeField(track, geo) : null), [track, geo])
-
-  useEffect(() => {
-    if (settings.terrainSource !== 'dem' || !geo) { setDem({ status: 'idle', field: null }); return }
-    const ctrl = new AbortController()
-    setDem({ status: 'loading', field: null })
-    fetchDEMField(geo, ctrl.signal)
-      .then((field) => !ctrl.signal.aborted && setDem({ status: 'ok', field }))
-      .catch((e) => !ctrl.signal.aborted && (console.warn(e), setDem({ status: 'error', field: null })))
-    return () => ctrl.abort()
-  }, [settings.terrainSource, geo])
-
-  const field = dem.field || synthField
-
-  // OpenStreetMap imagery for the map theme (keeps the last texture for this hike when switching themes)
-  const [osm, setOsm] = useState({ status: 'idle', texture: null })
-  const wantsTiles = !!theme.mapTiles
-  useEffect(() => {
-    if (!wantsTiles || !geo) return
-    const ctrl = new AbortController()
-    let tex = null
-    setOsm({ status: 'loading', texture: null })
-    fetchMapTexture(geo, ctrl.signal)
-      .then((t) => { tex = t; if (!ctrl.signal.aborted) setOsm({ status: 'ok', texture: t }) })
-      .catch((e) => !ctrl.signal.aborted && (console.warn(e), setOsm({ status: 'error', texture: null })))
-    return () => { ctrl.abort(); tex?.dispose() }
-  }, [wantsTiles, geo])
-
-  // Elevations used for metrics: GPX <ele> if present, otherwise sampled from the terrain
-  const eles = useMemo(() => {
-    if (!track || !geo || !field) return null
-    return track.hasEle ? track.points.map((p) => p.ele) : geo.world.map((p) => sampleField(field, p.x, p.z))
-  }, [track, geo, field])
-  const metrics = useMemo(() => (track && eles ? computeMetrics(track, eles) : null), [track, eles])
+  const track = hike?.track ?? null
+  const { geo, route, field, eles, metrics, demStatus, osm, wantsTiles } = useDiorama(track, settings, theme)
 
   const plateSub = metrics
     ? `${fmtDist(metrics.distanceM, units).toUpperCase()}  ·  +${fmtEle(metrics.gainM, units).toUpperCase()}  ·  ▲ ${fmtEle(metrics.peakM, units).toUpperCase()}`
@@ -182,11 +153,11 @@ export default function App() {
           setUnits={setUnits}
           onFile={onFile}
           onDemo={onDemo}
-          activeDemo={activeDemo}
+          activeDemo={hike?.demoId ?? null}
           onScrub={setScrub}
           error={error}
         />
-        <StylePanel dark={dark} settings={settings} set={set} demStatus={dem.status} osmStatus={wantsTiles ? osm.status : 'idle'} defaultOpen={!isNarrow} />
+        <StylePanel dark={dark} settings={settings} set={set} demStatus={demStatus} osmStatus={wantsTiles ? osm.status : 'idle'} defaultOpen={!isNarrow} />
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-3">
