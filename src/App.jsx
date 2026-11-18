@@ -3,7 +3,9 @@ import { Canvas } from '@react-three/fiber'
 import { Upload } from 'lucide-react'
 import Scene from './three/Scene.jsx'
 import { HikePanel, StylePanel, CameraBar } from './ui/Panels.jsx'
-import { AccountButton, SignInDialog } from './ui/Account.jsx'
+import { AccountButton, SignInDialog, SaveButton } from './ui/Account.jsx'
+import { saveHike } from './data/hikes.js'
+import { useAuth } from './data/auth.jsx'
 import { parseGPX } from './lib/gpx.js'
 import { DEMO_HIKES } from './lib/demoHikes.js'
 import { THEMES } from './lib/themes.js'
@@ -34,6 +36,8 @@ export default function App() {
   const [pageDrag, setPageDrag] = useState(false)
   const [signInOpen, setSignInOpen] = useState(false)
   const closeSignIn = useCallback(() => setSignInOpen(false), [])
+  const { user } = useAuth()
+  const [saving, setSaving] = useState(false)
   const glRef = useRef()
 
   const set = useCallback((patch) => setSettings((s) => ({ ...s, ...patch })), [])
@@ -76,6 +80,20 @@ export default function App() {
 
   const track = hike?.track ?? null
   const { geo, route, field, eles, metrics, demStatus, osm, wantsTiles } = useDiorama(track, settings, theme)
+
+  const save = async () => {
+    if (!hike || !metrics) return
+    setSaving(true)
+    try {
+      const saved = await saveHike({ track: hike.track, metrics, gpxText: hike.gpxText, settings })
+      // Only attach if the same hike is still on screen
+      setHike((h) => (h && h.gpxText === hike.gpxText ? { ...h, saved } : h))
+    } catch (e) {
+      setError(`Couldn't save: ${e.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const plateSub = metrics
     ? `${fmtDist(metrics.distanceM, units).toUpperCase()}  ·  +${fmtEle(metrics.gainM, units).toUpperCase()}  ·  ▲ ${fmtEle(metrics.peakM, units).toUpperCase()}`
@@ -159,6 +177,16 @@ export default function App() {
           activeDemo={hike?.demoId ?? null}
           onScrub={setScrub}
           error={error}
+          saveSlot={
+            <SaveButton
+              dark={dark}
+              signedIn={!!user}
+              saved={!!hike?.saved}
+              busy={saving}
+              onSignIn={() => setSignInOpen(true)}
+              onSave={save}
+            />
+          }
         />
         <StylePanel dark={dark} settings={settings} set={set} demStatus={demStatus} osmStatus={wantsTiles ? osm.status : 'idle'} defaultOpen={!isNarrow} />
       </div>

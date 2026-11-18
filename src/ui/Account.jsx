@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LogIn, LogOut, Mail, X, Loader2, UserRound } from 'lucide-react'
+import { LogIn, LogOut, Mail, X, Loader2, UserRound, Save, Check } from 'lucide-react'
 import { useAuth } from '../data/auth.jsx'
 
 const cx = (...a) => a.filter(Boolean).join(' ')
@@ -102,5 +102,21 @@ export function SignInDialog({ open, onClose, dark }) {
         )}
       </div>
     </div>
+  )
+}
+
+/** Save the hike on screen. Signed-out users are sent to sign in first. Hidden without accounts. */
+export function SaveButton({ dark, signedIn, saved, busy, onSignIn, onSave }) {
+  const { enabled, ready } = useAuth()
+  if (!enabled || !ready) return null
+  const primary = cx('chip-btn w-full py-2 text-white', dark ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-orange-600 hover:bg-orange-500')
+  const done = cx('chip-btn w-full cursor-default py-2 ring-1', dark ? 'text-emerald-200 ring-emerald-300/30' : 'bg-emerald-50 text-emerald-800 ring-emerald-600/20')
+
+  if (saved) return <div className={done}><Check size={14} /> Saved to your trophies</div>
+  if (!signedIn) return <button className={primary} onClick={onSignIn}><LogIn size={14} /> Sign in to save this hike</button>
+  return (
+    <button className={cx(primary, busy && 'opacity-70')} onClick={onSave} disabled={busy}>
+      {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {busy ? 'Saving…' : 'Save to my trophies'}
+    </button>
   )
 }
