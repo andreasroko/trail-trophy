@@ -27,6 +27,9 @@ jobs:
       - run: npm run build
         env:
           GITHUB_PAGES: 'true'
+          # Public Supabase values (Settings → Secrets and variables → Actions → Variables)
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
       # Pages has no rewrite rules: serving the app as 404.html lets deep links
       # like /trail-trophy/h/123 boot the SPA, which then routes client-side
       - run: cp dist/index.html dist/404.html

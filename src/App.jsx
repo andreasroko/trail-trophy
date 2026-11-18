@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber'
 import { Upload } from 'lucide-react'
 import Scene from './three/Scene.jsx'
 import { HikePanel, StylePanel, CameraBar } from './ui/Panels.jsx'
+import { AccountButton, SignInDialog } from './ui/Account.jsx'
 import { parseGPX } from './lib/gpx.js'
 import { DEMO_HIKES } from './lib/demoHikes.js'
 import { THEMES } from './lib/themes.js'
@@ -31,6 +32,8 @@ export default function App() {
   const [scrub, setScrub] = useState(null)
   const [animKey, setAnimKey] = useState(0)
   const [pageDrag, setPageDrag] = useState(false)
+  const [signInOpen, setSignInOpen] = useState(false)
+  const closeSignIn = useCallback(() => setSignInOpen(false), [])
   const glRef = useRef()
 
   const set = useCallback((patch) => setSettings((s) => ({ ...s, ...patch })), [])
@@ -160,7 +163,14 @@ export default function App() {
         <StylePanel dark={dark} settings={settings} set={set} demStatus={demStatus} osmStatus={wantsTiles ? osm.status : 'idle'} defaultOpen={!isNarrow} />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-3">
+      <div className="pointer-events-none absolute inset-x-0 top-3 hidden justify-center px-3 lg:flex">
+        <AccountButton dark={dark} onSignIn={() => setSignInOpen(true)} />
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex flex-col items-center gap-2 px-3">
+        <div className="lg:hidden">
+          <AccountButton dark={dark} onSignIn={() => setSignInOpen(true)} />
+        </div>
         <CameraBar dark={dark} onPreset={(name) => setPreset({ name, n: Date.now() })} onSnapshot={snapshot} />
       </div>
 
@@ -173,6 +183,8 @@ export default function App() {
           </a>
         </div>
       )}
+
+      <SignInDialog open={signInOpen} onClose={closeSignIn} dark={dark} />
 
       {pageDrag && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
