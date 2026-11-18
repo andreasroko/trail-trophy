@@ -23,3 +23,11 @@ input[type='range'].tt-range::-moz-range-track { height: 6px; border-radius: 999
 input[type='range'].tt-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 999px; background: var(--thumb, #ea580c); border: 3px solid white; }
 
 .tt-label { pointer-events: none; white-space: nowrap; transform: translateY(-140%); }
+
+/* Touch screens: finger-sized targets */
+@media (pointer: coarse) {
+  .chip-btn { min-height: 40px; }
+  input[type='range'].tt-range { height: 32px; }
+  input[type='range'].tt-range::-webkit-slider-thumb { width: 26px; height: 26px; margin-top: -10px; }
+  input[type='range'].tt-range::-moz-range-thumb { width: 22px; height: 22px; }
+}

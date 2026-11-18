@@ -1,9 +1,11 @@
 import { Suspense, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Upload } from 'lucide-react'
+import { Mountain, Upload } from 'lucide-react'
 import Scene from './three/Scene.jsx'
 import { HikePanel, StylePanel, CameraBar } from './ui/Panels.jsx'
+import MobileSheet from './ui/MobileSheet.jsx'
+import { useIsMobile, useIsTouch } from './hooks/useMediaQuery.js'
 import { AccountButton, SignInDialog, SaveButton, TrophyShelf } from './ui/Account.jsx'
 import { saveHike, listMyHikes, getMyHike, updateHike, deleteHike, pickSavedSettings, getSharedHike, shareUrl } from './data/hikes.js'
 import { useAuth } from './data/auth.jsx'
@@ -237,10 +239,38 @@ export default function App() {
 
   const dark = theme.dark
   const accent = theme.trail.emissive
-  const isNarrow = typeof window !== 'undefined' && window.innerWidth < 768
+  const isMobile = useIsMobile()
+  const isTouch = useIsTouch()
+  const openSignIn = () => setSignInOpen(true)
+  const onPreset = (name) => setPreset({ name, n: Date.now() })
+  const accountProps = { dark, onSignIn: openSignIn, onOpenTrophies: openShelf }
+
+  const saveSlot = (
+    <SaveButton
+      dark={dark}
+      signedIn={!!user}
+      saved={!!hike?.saved}
+      dirty={dirty}
+      busy={saving}
+      onSaveStyle={saveStyle}
+      readOnly={readOnly}
+      isPublic={!!hike?.saved?.isPublic}
+      link={hike?.saved?.isPublic ? shareUrl(hike.saved) : null}
+      onTogglePublic={togglePublic}
+      onSignIn={openSignIn}
+      onSave={save}
+    />
+  )
+  const hikeProps = {
+    accent, track, metrics, eles, units, setUnits, onFile, onDemo, onScrub: setScrub, saveSlot,
+    activeDemo: hike?.demoId ?? null,
+    touch: isTouch,
+  }
+  const styleProps = { settings, set, demStatus, osmStatus: wantsTiles ? osm.status : 'idle' }
 
   return (
     <div className="relative h-full w-full" style={{ background: theme.background }}>
+      <div className="absolute inset-x-0 top-0 bottom-0 max-md:bottom-[150px] md:max-lg:bottom-0">
       <Canvas
         shadows
         dpr={[1, 2]}
@@ -268,58 +298,50 @@ export default function App() {
           )}
         </Suspense>
       </Canvas>
-
-      {/* overlays */}
-      <div className="pointer-events-none absolute inset-0 flex flex-col justify-between gap-3 p-3 md:flex-row md:items-start">
-        <HikePanel
-          dark={dark}
-          accent={accent}
-          track={track}
-          metrics={metrics}
-          eles={eles}
-          units={units}
-          setUnits={setUnits}
-          onFile={onFile}
-          onDemo={onDemo}
-          activeDemo={hike?.demoId ?? null}
-          onScrub={setScrub}
-          error={error}
-          readOnly={readOnly}
-          onNew={() => onDemo(DEMO_HIKES[0])}
-          saveSlot={
-            <SaveButton
-              dark={dark}
-              signedIn={!!user}
-              saved={!!hike?.saved}
-              dirty={dirty}
-              busy={saving}
-              onSaveStyle={saveStyle}
-              readOnly={readOnly}
-              isPublic={!!hike?.saved?.isPublic}
-              link={hike?.saved?.isPublic ? shareUrl(hike.saved) : null}
-              onTogglePublic={togglePublic}
-              onSignIn={() => setSignInOpen(true)}
-              onSave={save}
-            />
-          }
-        />
-        <StylePanel dark={dark} settings={settings} set={set} demStatus={demStatus} osmStatus={wantsTiles ? osm.status : 'idle'} defaultOpen={!isNarrow} />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 top-3 hidden justify-center px-3 lg:flex">
-        <AccountButton dark={dark} onSignIn={() => setSignInOpen(true)} onOpenTrophies={openShelf} />
-      </div>
+      {isMobile ? (
+        <>
+          {/* Phone: slim top bar + bottom sheet */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between gap-2 px-2 pt-[max(8px,env(safe-area-inset-top))]">
+            <div className={`${dark ? 'glass-dark' : 'glass-light'} flex items-center gap-1.5 !rounded-full px-3 py-2 font-display text-sm font-semibold`}>
+              <Mountain size={15} className={dark ? 'text-cyan-300' : 'text-orange-600'} /> Trail Trophy
+            </div>
+            <AccountButton {...accountProps} compact />
+          </div>
+          <MobileSheet
+            dark={dark}
+            track={track}
+            metrics={metrics}
+            units={units}
+            error={error}
+            readOnly={readOnly}
+            onNew={() => onDemo(DEMO_HIKES[0])}
+            hikeProps={hikeProps}
+            styleProps={styleProps}
+            cameraBar={<CameraBar dark={dark} compact onPreset={onPreset} onSnapshot={snapshot} />}
+          />
+        </>
+      ) : (
+        <>
+          <div className="pointer-events-none absolute inset-0 z-30 flex flex-row items-start justify-between gap-3 p-3">
+            <HikePanel dark={dark} error={error} readOnly={readOnly} onNew={() => onDemo(DEMO_HIKES[0])} {...hikeProps} />
+            <StylePanel dark={dark} {...styleProps} />
+          </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex flex-col items-center gap-2 px-3">
-        <div className="lg:hidden">
-          <AccountButton dark={dark} onSignIn={() => setSignInOpen(true)} onOpenTrophies={openShelf} />
-        </div>
-        <CameraBar dark={dark} onPreset={(name) => setPreset({ name, n: Date.now() })} onSnapshot={snapshot} />
-      </div>
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
+            <AccountButton {...accountProps} />
+          </div>
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-3">
+            <CameraBar dark={dark} onPreset={onPreset} onSnapshot={snapshot} />
+          </div>
+        </>
+      )}
 
       {wantsTiles && (
         // Required attribution for OpenStreetMap tiles
-        <div className="pointer-events-auto absolute bottom-1 right-2 rounded bg-white/75 px-1.5 py-0.5 text-[10px] text-stone-700 backdrop-blur">
+        <div className="pointer-events-auto absolute z-30 rounded max-md:left-2 max-md:top-[calc(max(8px,env(safe-area-inset-top))+44px)] md:bottom-1 md:right-2 bg-white/75 px-1.5 py-0.5 text-[10px] text-stone-700 backdrop-blur">
           Map ©{' '}
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">
             OpenStreetMap contributors

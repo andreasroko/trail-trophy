@@ -48,6 +48,7 @@ Without the env values, the account UI is hidden and the app works as a standalo
 - **Metrics**: distance (km or mi), elevation gain and loss, peak and low point, and duration. Duration comes from GPS timestamps when the file has them, otherwise from Naismith's rule.
 - **Elevation profile**: hover or drag on it to move the hiker bead along the 3D trail.
 - **Snapshot**: saves the current view as a PNG.
+- **Phones & tablets**: below 1024px wide (and on landscape phones) the panels become a bottom sheet with Hike / Style / New hike tabs, so the diorama keeps the screen. Touch screens get finger-sized controls and a file picker that works with iOS Files.
 
 ## Data pipeline (`src/lib`)
 
