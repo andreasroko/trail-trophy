@@ -88,17 +88,24 @@ function Metric({ icon: Icon, label, value, sub, dark }) {
   )
 }
 
-export function HikePanel({ dark, accent, track, metrics, eles, units, setUnits, onFile, onDemo, activeDemo, onScrub, error, saveSlot, readOnly, onNew }) {
+const errorBox = (error) => error && <div className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-600 ring-1 ring-red-500/30">{error}</div>
+
+/** "A shared trophy · Make your own →" shown on /t/ links instead of the loader. */
+export function SharedBanner({ dark, onNew }) {
+  return (
+    <div className={cx('flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-xs', dark ? 'bg-white/5' : 'bg-white/60')}>
+      <span className="font-medium">A shared trophy</span>
+      <button onClick={onNew} className={cx('font-semibold underline-offset-2 hover:underline', dark ? 'text-cyan-300' : 'text-orange-700')}>Make your own →</button>
+    </div>
+  )
+}
+
+/** GPX drop zone / file picker plus the demo hikes. */
+export function HikeLoader({ dark, onFile, onDemo, activeDemo, touch }) {
   const inputRef = useRef()
   const [over, setOver] = useState(false)
   return (
-    <Panel dark={dark} title="Trail Trophy" icon={Mountain}>
-      {readOnly ? (
-        <div className={cx('flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-xs', dark ? 'bg-white/5' : 'bg-white/60')}>
-          <span className="font-medium">A shared trophy</span>
-          <button onClick={onNew} className={cx('font-semibold underline-offset-2 hover:underline', dark ? 'text-cyan-300' : 'text-orange-700')}>Make your own →</button>
-        </div>
-      ) : (<>
+    <>
       <div
         onDragOver={(e) => { e.preventDefault(); setOver(true) }}
         onDragLeave={() => setOver(false)}
@@ -112,12 +119,12 @@ export function HikePanel({ dark, accent, track, metrics, eles, units, setUnits,
         )}
       >
         <Upload size={18} className={dark ? 'text-cyan-300' : 'text-orange-600'} />
-        <div className="text-xs font-semibold">Drop a .gpx file</div>
-        <div className={cx('text-[11px]', dark ? 'text-slate-400' : 'text-stone-500')}>or click to browse</div>
-        <input ref={inputRef} type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" className="hidden"
+        <div className="text-xs font-semibold">{touch ? 'Choose a .gpx file' : 'Drop a .gpx file'}</div>
+        <div className={cx('text-[11px]', dark ? 'text-slate-400' : 'text-stone-500')}>{touch ? 'from Files, Strava or Komoot exports' : 'or click to browse'}</div>
+        {/* iOS greys out .gpx files when `accept` lists them, so touch devices get no filter (onFile still checks) */}
+        <input ref={inputRef} type="file" accept={touch ? undefined : '.gpx,application/gpx+xml,application/xml,text/xml'} className="hidden"
           onChange={(e) => { const f = e.target.files[0]; f && onFile(f); e.target.value = '' }} />
       </div>
-      {error && <div className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-600 ring-1 ring-red-500/30">{error}</div>}
 
       <div className="grid grid-cols-2 gap-2">
         {DEMO_HIKES.map((d) => (
@@ -136,41 +143,76 @@ export function HikePanel({ dark, accent, track, metrics, eles, units, setUnits,
           </button>
         ))}
       </div>
-      </>)}
+    </>
+  )
+}
 
-      {readOnly && error && <div className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-600 ring-1 ring-red-500/30">{error}</div>}
-      {track && metrics && (
+const unitToggle = (dark, units, setUnits) => (
+  <div className="w-24 shrink-0"><Segmented dark={dark} value={units} onChange={setUnits} options={[{ value: 'metric', label: 'km' }, { value: 'imperial', label: 'mi' }]} /></div>
+)
+
+/** Name + units, save controls, metric cards and the elevation profile. */
+export function HikeDetails({ dark, accent, track, metrics, eles, units, setUnits, onScrub, saveSlot, hideName }) {
+  if (!track || !metrics) return null
+  return (
+    <>
+      {hideName ? (
+        // Phone sheet: the name is already in the sheet header, so units share a row with saving
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">{saveSlot}</div>
+          {unitToggle(dark, units, setUnits)}
+        </div>
+      ) : (
         <>
           <div className="flex items-end justify-between gap-2">
             <div className="min-w-0">
               <div className={cx('text-[10px] font-semibold uppercase tracking-[0.14em]', dark ? 'text-slate-400' : 'text-stone-500')}>Now showing</div>
               <div className="truncate font-display text-base font-semibold">{track.name}</div>
             </div>
-            <Segmented dark={dark} value={units} onChange={setUnits} options={[{ value: 'metric', label: 'km' }, { value: 'imperial', label: 'mi' }]} />
+            {unitToggle(dark, units, setUnits)}
           </div>
           {saveSlot}
-          <div className="grid grid-cols-2 gap-2">
-            <Metric dark={dark} icon={Route} label="Distance" value={fmtDist(metrics.distanceM, units)}
-              sub={units === 'metric' ? `${(metrics.distanceM / 1609.344).toFixed(1)} mi` : `${(metrics.distanceM / 1000).toFixed(1)} km`} />
-            <Metric dark={dark} icon={TrendingUp} label="Elev. gain" value={`+${fmtEle(metrics.gainM, units)}`} sub={`−${fmtEle(metrics.lossM, units)} loss`} />
-            <Metric dark={dark} icon={MountainSnow} label="Peak" value={fmtEle(metrics.peakM, units)} sub={`low ${fmtEle(metrics.minM, units)}`} />
-            <Metric dark={dark} icon={Timer} label="Duration" value={fmtDuration(metrics.durationH)} sub={metrics.durationSource} />
-          </div>
-          <ElevationProfile cumDist={metrics.cumDist} eles={eles} peakIdx={metrics.peakIdx} units={units} dark={dark} accent={accent} onScrub={onScrub} />
-          {!track.hasEle && (
-            <div className={cx('text-[11px]', dark ? 'text-amber-300' : 'text-amber-700')}>
-              This GPX has no &lt;ele&gt; data — elevations are sampled from the terrain.
-            </div>
-          )}
         </>
       )}
+      <div className="grid grid-cols-2 gap-2">
+        <Metric dark={dark} icon={Route} label="Distance" value={fmtDist(metrics.distanceM, units)}
+          sub={units === 'metric' ? `${(metrics.distanceM / 1609.344).toFixed(1)} mi` : `${(metrics.distanceM / 1000).toFixed(1)} km`} />
+        <Metric dark={dark} icon={TrendingUp} label="Elev. gain" value={`+${fmtEle(metrics.gainM, units)}`} sub={`−${fmtEle(metrics.lossM, units)} loss`} />
+        <Metric dark={dark} icon={MountainSnow} label="Peak" value={fmtEle(metrics.peakM, units)} sub={`low ${fmtEle(metrics.minM, units)}`} />
+        <Metric dark={dark} icon={Timer} label="Duration" value={fmtDuration(metrics.durationH)} sub={metrics.durationSource} />
+      </div>
+      <ElevationProfile cumDist={metrics.cumDist} eles={eles} peakIdx={metrics.peakIdx} units={units} dark={dark} accent={accent} onScrub={onScrub} />
+      {!track.hasEle && (
+        <div className={cx('text-[11px]', dark ? 'text-amber-300' : 'text-amber-700')}>
+          This GPX has no &lt;ele&gt; data — elevations are sampled from the terrain.
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Desktop: everything about the hike in one floating panel. */
+export function HikePanel({ dark, onNew, readOnly, error, ...rest }) {
+  return (
+    <Panel dark={dark} title="Trail Trophy" icon={Mountain}>
+      {readOnly ? <SharedBanner dark={dark} onNew={onNew} /> : <HikeLoader dark={dark} {...rest} />}
+      {errorBox(error)}
+      <HikeDetails dark={dark} {...rest} />
     </Panel>
   )
 }
 
-export function StylePanel({ dark, settings, set, demStatus, osmStatus, defaultOpen }) {
+export function StylePanel({ dark, defaultOpen, ...rest }) {
   return (
     <Panel dark={dark} title="Diorama Style" icon={Layers} defaultOpen={defaultOpen}>
+      <StyleControls dark={dark} {...rest} />
+    </Panel>
+  )
+}
+
+export function StyleControls({ dark, settings, set, demStatus, osmStatus }) {
+  return (
+    <>
       <Section title="Base shape" dark={dark}>
         <Segmented dark={dark} value={settings.shape} onChange={(v) => set({ shape: v })} options={[
           { value: 'hexagon', label: 'Hex', icon: Hexagon },
@@ -229,7 +271,7 @@ export function StylePanel({ dark, settings, set, demStatus, osmStatus, defaultO
           <Toggle dark={dark} icon={Tag} label="Labels" checked={settings.labels} onChange={(v) => set({ labels: v })} />
         </div>
       </Section>
-    </Panel>
+    </>
   )
 }
 
@@ -240,15 +282,25 @@ function themeSwatch(t) {
   return 'linear-gradient(135deg,#0b0f16 0%,#1a2230 50%,#22d3ee 51%,#22d3ee 53%,#1a2230 54%,#ff2bd6 80%,#1a2230 82%)'
 }
 
-export function CameraBar({ dark, onPreset, onSnapshot }) {
-  const btn = cx('chip-btn px-3 py-2', dark ? 'text-slate-200 hover:bg-white/10' : 'text-stone-700 hover:bg-white/80')
+const CAMERA_BUTTONS = [
+  { id: 'showcase', icon: Box, label: 'Isometric' },
+  { id: 'top', icon: Map, label: 'Top-down' },
+  { id: 'summit', icon: Flag, label: 'Summit' },
+]
+
+export function CameraBar({ dark, onPreset, onSnapshot, compact }) {
+  const btn = cx('chip-btn', compact ? 'h-10 w-10 p-0' : 'px-3 py-2', dark ? 'text-slate-200 hover:bg-white/10' : 'text-stone-700 hover:bg-white/80')
   return (
-    <div className={cx(dark ? 'glass-dark' : 'glass-light', 'pointer-events-auto flex items-center gap-1 p-1.5')}>
-      <button className={btn} onClick={() => onPreset('showcase')}><Box size={15} /> <span className="hidden sm:inline">Isometric</span></button>
-      <button className={btn} onClick={() => onPreset('top')}><Map size={15} /> <span className="hidden sm:inline">Top-down</span></button>
-      <button className={btn} onClick={() => onPreset('summit')}><Flag size={15} /> <span className="hidden sm:inline">Summit</span></button>
+    <div className={cx(dark ? 'glass-dark' : 'glass-light', 'pointer-events-auto flex items-center gap-1', compact ? '!rounded-full p-1' : 'p-1.5')}>
+      {CAMERA_BUTTONS.map(({ id, icon: Icon, label }) => (
+        <button key={id} className={btn} onClick={() => onPreset(id)} title={label} aria-label={`${label} view`}>
+          <Icon size={compact ? 17 : 15} /> {!compact && <span className="hidden sm:inline">{label}</span>}
+        </button>
+      ))}
       <div className={cx('mx-1 h-5 w-px', dark ? 'bg-white/15' : 'bg-stone-900/10')} />
-      <button className={btn} onClick={onSnapshot} title="Save PNG snapshot"><Camera size={15} /> <span className="hidden sm:inline">Snapshot</span></button>
+      <button className={btn} onClick={onSnapshot} title="Save PNG snapshot" aria-label="Save PNG snapshot">
+        <Camera size={compact ? 17 : 15} /> {!compact && <span className="hidden sm:inline">Snapshot</span>}
+      </button>
     </div>
   )
 }

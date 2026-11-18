@@ -7,11 +7,39 @@ import { fmtDist, fmtEle } from './format.js'
 const cx = (...a) => a.filter(Boolean).join(' ')
 
 /** Sign-in button, or the signed-in email + sign-out. Renders nothing if accounts aren't configured. */
-export function AccountButton({ dark, onSignIn, onOpenTrophies }) {
+export function AccountButton({ dark, onSignIn, onOpenTrophies, compact }) {
   const { enabled, ready, user, signOut } = useAuth()
   const [busy, setBusy] = useState(false)
+  const [menu, setMenu] = useState(false)
   if (!enabled || !ready) return null
   const btn = cx('chip-btn px-3 py-2', dark ? 'text-slate-200 hover:bg-white/10' : 'text-stone-700 hover:bg-white/80')
+  const doSignOut = async () => { setBusy(true); try { await signOut() } finally { setBusy(false); setMenu(false) } }
+
+  if (compact) {
+    const glass = cx(dark ? 'glass-dark' : 'glass-light', 'pointer-events-auto')
+    if (!user) return <button className={cx(glass, btn, '!rounded-full')} onClick={onSignIn}><LogIn size={15} /> Sign in</button>
+    return (
+      <div className="relative">
+        <button className={cx(glass, btn, '!rounded-full')} onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-label="Account menu">
+          <Trophy size={15} /> <UserRound size={15} />
+        </button>
+        {menu && (
+          <>
+            <div className="pointer-events-auto fixed inset-0" onClick={() => setMenu(false)} />
+            <div className={cx(glass, 'absolute right-0 top-full z-10 mt-2 w-60 space-y-1 p-1.5', dark ? '!bg-slate-900/90' : '!bg-white/90')}>
+              <div className={cx('flex items-center gap-1.5 truncate px-2.5 py-2 text-xs', dark ? 'text-slate-400' : 'text-stone-500')}>
+                <UserRound size={14} className="shrink-0" /><span className="truncate">{user.email}</span>
+              </div>
+              <button className={cx(btn, 'w-full !justify-start')} onClick={() => { setMenu(false); onOpenTrophies() }}><Trophy size={15} /> My trophies</button>
+              <button className={cx(btn, 'w-full !justify-start')} disabled={busy} onClick={doSignOut}>
+                {busy ? <Loader2 size={15} className="animate-spin" /> : <LogOut size={15} />} Sign out
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={cx(dark ? 'glass-dark' : 'glass-light', 'pointer-events-auto flex items-center gap-1 p-1.5')}>
@@ -26,7 +54,7 @@ export function AccountButton({ dark, onSignIn, onOpenTrophies }) {
           <button
             className={btn}
             disabled={busy}
-            onClick={async () => { setBusy(true); try { await signOut() } finally { setBusy(false) } }}
+            onClick={doSignOut}
           >
             {busy ? <Loader2 size={15} className="animate-spin" /> : <LogOut size={15} />} Sign out
           </button>
@@ -64,12 +92,12 @@ export function SignInDialog({ open, onClose, dark }) {
   }
 
   return (
-    <div className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-3 backdrop-blur-sm" onMouseDown={onClose}>
+    <div className="pointer-events-auto fixed inset-0 z-40 flex items-end justify-center bg-black/30 backdrop-blur-sm sm:items-center sm:p-3" onMouseDown={onClose}>
       <div
         role="dialog"
         aria-label="Sign in"
         onMouseDown={(e) => e.stopPropagation()}
-        className={cx(dark ? 'glass-dark !bg-slate-900/90' : 'glass-light !bg-white/90', 'w-full max-w-sm p-5')}
+        className={cx(dark ? 'glass-dark !bg-slate-900/90' : 'glass-light !bg-white/90', 'w-full max-w-sm !rounded-b-none p-5 pb-[max(20px,env(safe-area-inset-bottom))] sm:!rounded-b-2xl sm:pb-5')}
       >
         <div className="mb-4 flex items-center gap-2">
           <LogIn size={18} className={dark ? 'text-cyan-300' : 'text-orange-600'} />
@@ -90,7 +118,7 @@ export function SignInDialog({ open, onClose, dark }) {
             <input
               type="email" required autoFocus placeholder="you@example.com" value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className={cx('w-full rounded-xl px-3 py-2.5 text-sm outline-none ring-1 focus:ring-2',
+              className={cx('w-full rounded-xl px-3 py-2.5 text-base outline-none sm:text-sm ring-1 focus:ring-2',
                 dark ? 'bg-white/5 ring-white/15 focus:ring-cyan-300' : 'bg-white ring-stone-900/10 focus:ring-orange-500')}
             />
             <button
@@ -184,12 +212,12 @@ export function TrophyShelf({ open, onClose, dark, list, loading, error, units, 
   if (!open) return null
 
   return (
-    <div className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-3 backdrop-blur-sm" onMouseDown={onClose}>
+    <div className="pointer-events-auto fixed inset-0 z-40 flex items-end justify-center bg-black/30 backdrop-blur-sm sm:items-center sm:p-3" onMouseDown={onClose}>
       <div
         role="dialog"
         aria-label="My trophies"
         onMouseDown={(e) => e.stopPropagation()}
-        className={cx(dark ? 'glass-dark !bg-slate-900/90' : 'glass-light !bg-white/90', 'max-h-[85vh] w-full max-w-2xl overflow-y-auto p-5')}
+        className={cx(dark ? 'glass-dark !bg-slate-900/90' : 'glass-light !bg-white/90', 'max-h-[85dvh] w-full max-w-2xl overflow-y-auto overscroll-contain !rounded-b-none p-5 pb-[max(20px,env(safe-area-inset-bottom))] sm:!rounded-b-2xl sm:pb-5')}
       >
         <div className="mb-4 flex items-center gap-2">
           <Trophy size={18} className={dark ? 'text-cyan-300' : 'text-orange-600'} />
@@ -231,12 +259,12 @@ export function TrophyShelf({ open, onClose, dark, list, loading, error, units, 
               </button>
               <button
                 onClick={() => { if (window.confirm(`Delete "${h.name}"? This can't be undone.`)) onDelete(h) }}
-                className={cx('absolute right-2 top-2 rounded-md p-1.5 opacity-0 transition focus:opacity-100 group-hover:opacity-100',
+                className={cx('absolute right-1.5 top-1.5 rounded-md p-2 transition [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus:opacity-100 [@media(hover:hover)]:group-hover:opacity-100',
                   dark ? 'text-slate-400 hover:bg-red-500/20 hover:text-red-300' : 'text-stone-400 hover:bg-red-50 hover:text-red-600')}
                 title="Delete hike"
                 aria-label={`Delete ${h.name}`}
               >
-                <Trash2 size={14} />
+                <Trash2 size={15} />
               </button>
               </div>
             )
