@@ -27,6 +27,9 @@ jobs:
       - run: npm run build
         env:
           GITHUB_PAGES: 'true'
+      # Pages has no rewrite rules: serving the app as 404.html lets deep links
+      # like /trail-trophy/h/123 boot the SPA, which then routes client-side
+      - run: cp dist/index.html dist/404.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
