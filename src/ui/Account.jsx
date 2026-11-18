@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LogIn, LogOut, Mail, X, Loader2, UserRound, Save, Check, Trophy } from 'lucide-react'
+import { LogIn, LogOut, Mail, X, Loader2, UserRound, Save, Check, Trophy, Trash2 } from 'lucide-react'
 import { useAuth } from '../data/auth.jsx'
 import { THEMES } from '../lib/themes.js'
 import { fmtDist, fmtEle } from './format.js'
@@ -110,12 +110,19 @@ export function SignInDialog({ open, onClose, dark }) {
 }
 
 /** Save the hike on screen. Signed-out users are sent to sign in first. Hidden without accounts. */
-export function SaveButton({ dark, signedIn, saved, busy, onSignIn, onSave }) {
+export function SaveButton({ dark, signedIn, saved, dirty, busy, onSignIn, onSave, onSaveStyle }) {
   const { enabled, ready } = useAuth()
   if (!enabled || !ready) return null
   const primary = cx('chip-btn w-full py-2 text-white', dark ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-orange-600 hover:bg-orange-500')
   const done = cx('chip-btn w-full cursor-default py-2 ring-1', dark ? 'text-emerald-200 ring-emerald-300/30' : 'bg-emerald-50 text-emerald-800 ring-emerald-600/20')
 
+  if (saved && dirty) {
+    return (
+      <button className={cx(primary, busy && 'opacity-70')} onClick={onSaveStyle} disabled={busy}>
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {busy ? 'Saving…' : 'Save style changes'}
+      </button>
+    )
+  }
   if (saved) return <div className={done}><Check size={14} /> Saved to your trophies</div>
   if (!signedIn) return <button className={primary} onClick={onSignIn}><LogIn size={14} /> Sign in to save this hike</button>
   return (
@@ -126,7 +133,7 @@ export function SaveButton({ dark, signedIn, saved, busy, onSignIn, onSave }) {
 }
 
 /** Your saved hikes. Opening one navigates to /h/:id. */
-export function TrophyShelf({ open, onClose, dark, list, loading, error, units, currentId, onOpen }) {
+export function TrophyShelf({ open, onClose, dark, list, loading, error, units, currentId, onOpen, onDelete }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e) => e.key === 'Escape' && onClose()
@@ -161,10 +168,10 @@ export function TrophyShelf({ open, onClose, dark, list, loading, error, units, 
           {list.map((h) => {
             const accent = (THEMES[h.settings?.theme] || THEMES.satellite).trail.emissive
             return (
+              <div key={h.id} className="group relative">
               <button
-                key={h.id}
                 onClick={() => onOpen(h)}
-                className={cx('rounded-xl p-3 text-left ring-1 transition',
+                className={cx('w-full rounded-xl p-3 text-left ring-1 transition',
                   dark ? 'bg-white/5' : 'bg-white/70',
                   currentId === h.id
                     ? (dark ? 'ring-cyan-300' : 'ring-orange-500')
@@ -181,6 +188,16 @@ export function TrophyShelf({ open, onClose, dark, list, loading, error, units, 
                   <span>▲ {fmtEle(h.peakM, units)}</span>
                 </div>
               </button>
+              <button
+                onClick={() => { if (window.confirm(`Delete "${h.name}"? This can't be undone.`)) onDelete(h) }}
+                className={cx('absolute right-2 top-2 rounded-md p-1.5 opacity-0 transition focus:opacity-100 group-hover:opacity-100',
+                  dark ? 'text-slate-400 hover:bg-red-500/20 hover:text-red-300' : 'text-stone-400 hover:bg-red-50 hover:text-red-600')}
+                title="Delete hike"
+                aria-label={`Delete ${h.name}`}
+              >
+                <Trash2 size={14} />
+              </button>
+              </div>
             )
           })}
         </div>

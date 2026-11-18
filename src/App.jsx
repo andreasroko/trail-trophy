@@ -5,7 +5,7 @@ import { Upload } from 'lucide-react'
 import Scene from './three/Scene.jsx'
 import { HikePanel, StylePanel, CameraBar } from './ui/Panels.jsx'
 import { AccountButton, SignInDialog, SaveButton, TrophyShelf } from './ui/Account.jsx'
-import { saveHike, listMyHikes, getMyHike } from './data/hikes.js'
+import { saveHike, listMyHikes, getMyHike, updateHike, deleteHike, pickSavedSettings } from './data/hikes.js'
 import { useAuth } from './data/auth.jsx'
 import { parseGPX } from './lib/gpx.js'
 import { DEMO_HIKES } from './lib/demoHikes.js'
@@ -143,6 +143,35 @@ export default function App() {
     }
   }
 
+  // Saved hike whose style was changed since saving
+  const dirty = !!hike?.saved &&
+    JSON.stringify(pickSavedSettings(settings)) !== JSON.stringify(pickSavedSettings({ ...DEFAULTS, ...hike.saved.settings }))
+
+  const saveStyle = async () => {
+    setSaving(true)
+    try {
+      const saved = await updateHike(hike.saved.id, { settings })
+      setHike((h) => (h?.saved?.id === saved.id ? { ...h, saved } : h))
+    } catch (e) {
+      setError(`Couldn't save changes: ${e.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeHike = async (h) => {
+    try {
+      await deleteHike(h.id)
+      setShelf((s) => ({ ...s, list: s.list.filter((x) => x.id !== h.id) }))
+      if (hike?.saved?.id === h.id) {
+        setHike((cur) => ({ ...cur, saved: null })) // keep it on screen, now unsaved
+        navigate('/')
+      }
+    } catch (e) {
+      setShelf((s) => ({ ...s, error: `Couldn't delete: ${e.message}` }))
+    }
+  }
+
   const plateSub = metrics
     ? `${fmtDist(metrics.distanceM, units).toUpperCase()}  ·  +${fmtEle(metrics.gainM, units).toUpperCase()}  ·  ▲ ${fmtEle(metrics.peakM, units).toUpperCase()}`
     : ''
@@ -230,7 +259,9 @@ export default function App() {
               dark={dark}
               signedIn={!!user}
               saved={!!hike?.saved}
+              dirty={dirty}
               busy={saving}
+              onSaveStyle={saveStyle}
               onSignIn={() => setSignInOpen(true)}
               onSave={save}
             />
@@ -268,6 +299,7 @@ export default function App() {
         currentId={hike?.saved?.id}
         onClose={() => setShelf((s) => ({ ...s, open: false }))}
         onOpen={(h) => { setShelf((s) => ({ ...s, open: false })); navigate(`/h/${h.id}`) }}
+        onDelete={removeHike}
       />
 
       {pageDrag && (

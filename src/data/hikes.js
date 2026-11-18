@@ -86,3 +86,22 @@ export async function getMyHike(id) {
   const blob = unwrap(await supabase.storage.from('gpx').download(hike.gpxPath))
   return { hike, gpxText: await blob.text() }
 }
+
+/** Change your hike's name, saved style, or visibility. */
+export async function updateHike(id, { name, settings, isPublic } = {}) {
+  const uid = await currentUserId()
+  const patch = {}
+  if (name != null) patch.name = name.slice(0, 200)
+  if (settings != null) patch.settings = pickSavedSettings(settings)
+  if (isPublic != null) patch.is_public = isPublic
+  return fromRow(unwrap(await supabase.from('hikes').update(patch).eq('id', id).eq('user_id', uid).select(COLUMNS).single()))
+}
+
+/** Delete your hike: the row first, then its GPX file (an orphaned file is harmless; a row without its file is not). */
+export async function deleteHike(id) {
+  const uid = await currentUserId()
+  const { gpx_path } = unwrap(await supabase.from('hikes').select('gpx_path').eq('id', id).eq('user_id', uid).single())
+  unwrap(await supabase.from('hikes').delete().eq('id', id).eq('user_id', uid))
+  const { error } = await supabase.storage.from('gpx').remove([gpx_path])
+  if (error) console.warn('Hike deleted but its GPX file could not be removed:', error.message)
+}
