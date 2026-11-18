@@ -71,3 +71,18 @@ export async function saveHike({ track, metrics, gpxText, settings }) {
     throw e
   }
 }
+
+/** Your saved hikes, newest first. (RLS also exposes everyone's *public* hikes, so filter by owner.) */
+export async function listMyHikes() {
+  const uid = await currentUserId()
+  const rows = unwrap(await supabase.from('hikes').select(COLUMNS).eq('user_id', uid).order('created_at', { ascending: false }))
+  return rows.map(fromRow)
+}
+
+/** One of your hikes plus its raw GPX. */
+export async function getMyHike(id) {
+  const uid = await currentUserId()
+  const hike = fromRow(unwrap(await supabase.from('hikes').select(COLUMNS).eq('id', id).eq('user_id', uid).single()))
+  const blob = unwrap(await supabase.storage.from('gpx').download(hike.gpxPath))
+  return { hike, gpxText: await blob.text() }
+}
