@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LogIn, LogOut, Mail, X, Loader2, UserRound, Save, Check, Trophy, Trash2 } from 'lucide-react'
+import { LogIn, LogOut, Mail, X, Loader2, UserRound, Save, Check, Trophy, Trash2, Globe, Lock, Link2 } from 'lucide-react'
 import { useAuth } from '../data/auth.jsx'
 import { THEMES } from '../lib/themes.js'
 import { fmtDist, fmtEle } from './format.js'
@@ -109,26 +109,67 @@ export function SignInDialog({ open, onClose, dark }) {
   )
 }
 
-/** Save the hike on screen. Signed-out users are sent to sign in first. Hidden without accounts. */
-export function SaveButton({ dark, signedIn, saved, dirty, busy, onSignIn, onSave, onSaveStyle }) {
+/**
+ * Save controls for the hike on screen:
+ * unsaved → "Save to my trophies" (or "Save a copy" on a shared link) · signed out → "Sign in to save"
+ * saved → "Saved" / "Save style changes", plus a Public/Private toggle and copyable share link.
+ * Hidden when accounts aren't configured.
+ */
+export function SaveButton({ dark, signedIn, saved, dirty, busy, readOnly, isPublic, link, onSignIn, onSave, onSaveStyle, onTogglePublic }) {
   const { enabled, ready } = useAuth()
+  const [copied, setCopied] = useState(false)
   if (!enabled || !ready) return null
   const primary = cx('chip-btn w-full py-2 text-white', dark ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-orange-600 hover:bg-orange-500')
-  const done = cx('chip-btn w-full cursor-default py-2 ring-1', dark ? 'text-emerald-200 ring-emerald-300/30' : 'bg-emerald-50 text-emerald-800 ring-emerald-600/20')
+  const done = cx('chip-btn flex-1 cursor-default py-2 ring-1', dark ? 'text-emerald-200 ring-emerald-300/30' : 'bg-emerald-50 text-emerald-800 ring-emerald-600/20')
+  const secondary = cx('chip-btn py-2 px-3 ring-1', dark ? 'ring-white/15 hover:bg-white/5' : 'bg-white/70 ring-stone-900/10 hover:bg-white')
+  const spinner = <Loader2 size={14} className="animate-spin" />
 
-  if (saved && dirty) {
+  if (!saved) {
+    if (!signedIn) {
+      return <button className={primary} onClick={onSignIn}><LogIn size={14} /> {readOnly ? 'Sign in to save a copy' : 'Sign in to save this hike'}</button>
+    }
     return (
-      <button className={cx(primary, busy && 'opacity-70')} onClick={onSaveStyle} disabled={busy}>
-        {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {busy ? 'Saving…' : 'Save style changes'}
+      <button className={cx(primary, busy && 'opacity-70')} onClick={onSave} disabled={busy}>
+        {busy ? spinner : <Save size={14} />} {busy ? 'Saving…' : readOnly ? 'Save a copy to my trophies' : 'Save to my trophies'}
       </button>
     )
   }
-  if (saved) return <div className={done}><Check size={14} /> Saved to your trophies</div>
-  if (!signedIn) return <button className={primary} onClick={onSignIn}><LogIn size={14} /> Sign in to save this hike</button>
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ }
+  }
+
   return (
-    <button className={cx(primary, busy && 'opacity-70')} onClick={onSave} disabled={busy}>
-      {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {busy ? 'Saving…' : 'Save to my trophies'}
-    </button>
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        {dirty ? (
+          <button className={cx(primary, 'flex-1', busy && 'opacity-70')} onClick={onSaveStyle} disabled={busy}>
+            {busy ? spinner : <Save size={14} />} {busy ? 'Saving…' : 'Save style changes'}
+          </button>
+        ) : (
+          <div className={done}><Check size={14} /> Saved</div>
+        )}
+        <button
+          className={secondary}
+          onClick={onTogglePublic}
+          disabled={busy}
+          title={isPublic ? 'Anyone with the link can view this hike — click to make private' : 'Only you can see this hike — click to share'}
+        >
+          {isPublic ? <Globe size={14} /> : <Lock size={14} />} {isPublic ? 'Public' : 'Private'}
+        </button>
+      </div>
+      {isPublic && link && (
+        <button
+          onClick={copy}
+          className={cx('flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[11px] ring-1',
+            dark ? 'bg-white/5 ring-white/10' : 'bg-white/60 ring-stone-900/10')}
+        >
+          {copied ? <Check size={13} className="shrink-0 text-emerald-500" /> : <Link2 size={13} className="shrink-0" />}
+          <span className="truncate font-mono">{link.replace(/^https?:\/\//, '')}</span>
+          <span className="ml-auto shrink-0 font-semibold">{copied ? 'Copied' : 'Copy link'}</span>
+        </button>
+      )}
+    </div>
   )
 }
 

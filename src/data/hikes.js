@@ -105,3 +105,13 @@ export async function deleteHike(id) {
   const { error } = await supabase.storage.from('gpx').remove([gpx_path])
   if (error) console.warn('Hike deleted but its GPX file could not be removed:', error.message)
 }
+
+/** A public hike by its share slug, plus its GPX. Works signed out. */
+export async function getSharedHike(slug) {
+  const hike = fromRow(unwrap(await supabase.from('hikes').select(COLUMNS).eq('share_slug', slug).eq('is_public', true).single()))
+  const blob = unwrap(await supabase.storage.from('gpx').download(hike.gpxPath))
+  return { hike, gpxText: await blob.text() }
+}
+
+/** Public URL for a shared hike (works locally and under /trail-trophy/ on Pages). */
+export const shareUrl = (hike) => `${window.location.origin}${import.meta.env.BASE_URL}t/${hike.shareSlug}`

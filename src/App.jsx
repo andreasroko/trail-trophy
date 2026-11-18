@@ -5,7 +5,7 @@ import { Upload } from 'lucide-react'
 import Scene from './three/Scene.jsx'
 import { HikePanel, StylePanel, CameraBar } from './ui/Panels.jsx'
 import { AccountButton, SignInDialog, SaveButton, TrophyShelf } from './ui/Account.jsx'
-import { saveHike, listMyHikes, getMyHike, updateHike, deleteHike, pickSavedSettings } from './data/hikes.js'
+import { saveHike, listMyHikes, getMyHike, updateHike, deleteHike, pickSavedSettings, getSharedHike, shareUrl } from './data/hikes.js'
 import { useAuth } from './data/auth.jsx'
 import { parseGPX } from './lib/gpx.js'
 import { DEMO_HIKES } from './lib/demoHikes.js'
@@ -38,7 +38,8 @@ export default function App() {
   const [signInOpen, setSignInOpen] = useState(false)
   const closeSignIn = useCallback(() => setSignInOpen(false), [])
   const { user, ready } = useAuth()
-  const { hikeId } = useParams() // set on /h/:hikeId — one of your saved hikes
+  const { hikeId, shareSlug } = useParams() // /h/:hikeId = one of your hikes · /t/:shareSlug = someone's public hike
+  const readOnly = !!shareSlug
   const navigate = useNavigate()
   const [shelf, setShelf] = useState({ open: false, list: [], loading: false, error: null })
   const [saving, setSaving] = useState(false)
@@ -64,11 +65,11 @@ export default function App() {
   const loadText = useCallback((text, demoId = null) => {
     try {
       showHike(text, { demoId })
-      if (hikeId) navigate('/')
+      if (hikeId || shareSlug) navigate('/')
     } catch (e) {
       setError(e.message || 'Could not read that GPX file.')
     }
-  }, [showHike, hikeId, navigate])
+  }, [showHike, hikeId, shareSlug, navigate])
 
   const onFile = useCallback((file) => {
     if (!/\.gpx$/i.test(file.name) && !/xml/.test(file.type)) {
@@ -84,6 +85,23 @@ export default function App() {
   // What to show for the current URL: the demo on "/", or one of your saved hikes on "/h/:id"
   useEffect(() => {
     const showDemo = () => showHike(DEMO_HIKES[0].gpx(), { demoId: DEMO_HIKES[0].id })
+    if (shareSlug) {
+      if (hike?.shared?.shareSlug === shareSlug) return
+      let cancelled = false
+      getSharedHike(shareSlug)
+        .then(({ hike: shared, gpxText }) => {
+          if (cancelled) return
+          showHike(gpxText, { settings: shared.settings })
+          setHike((h) => ({ ...h, shared }))
+        })
+        .catch(() => {
+          if (cancelled) return
+          if (!hike) showDemo() // before setError: showing a hike clears errors
+          navigate('/', { replace: true })
+          setError("That shared hike doesn't exist or is no longer public.")
+        })
+      return () => { cancelled = true }
+    }
     if (!hikeId) { if (!hike) showDemo(); return }
     if (hike?.saved?.id === hikeId || !ready) return
     if (!user) {
@@ -101,12 +119,12 @@ export default function App() {
       })
       .catch((e) => {
         if (cancelled) return
+        if (!hike) showDemo() // before setError: showing a hike clears errors
         setError(`Couldn't open that hike: ${e.message}`)
-        if (!hike) showDemo()
       })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hikeId, ready, user?.id])
+  }, [hikeId, shareSlug, ready, user?.id])
 
   // Signing out leaves your private hike URL
   useEffect(() => {
@@ -154,6 +172,18 @@ export default function App() {
       setHike((h) => (h?.saved?.id === saved.id ? { ...h, saved } : h))
     } catch (e) {
       setError(`Couldn't save changes: ${e.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const togglePublic = async () => {
+    setSaving(true)
+    try {
+      const saved = await updateHike(hike.saved.id, { isPublic: !hike.saved.isPublic })
+      setHike((h) => (h?.saved?.id === saved.id ? { ...h, saved } : h))
+    } catch (e) {
+      setError(`Couldn't change sharing: ${e.message}`)
     } finally {
       setSaving(false)
     }
@@ -254,6 +284,8 @@ export default function App() {
           activeDemo={hike?.demoId ?? null}
           onScrub={setScrub}
           error={error}
+          readOnly={readOnly}
+          onNew={() => onDemo(DEMO_HIKES[0])}
           saveSlot={
             <SaveButton
               dark={dark}
@@ -262,6 +294,10 @@ export default function App() {
               dirty={dirty}
               busy={saving}
               onSaveStyle={saveStyle}
+              readOnly={readOnly}
+              isPublic={!!hike?.saved?.isPublic}
+              link={hike?.saved?.isPublic ? shareUrl(hike.saved) : null}
+              onTogglePublic={togglePublic}
               onSignIn={() => setSignInOpen(true)}
               onSave={save}
             />
