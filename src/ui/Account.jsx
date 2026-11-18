@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { LogIn, LogOut, Mail, X, Loader2, UserRound, Save, Check } from 'lucide-react'
+import { LogIn, LogOut, Mail, X, Loader2, UserRound, Save, Check, Trophy } from 'lucide-react'
 import { useAuth } from '../data/auth.jsx'
+import { THEMES } from '../lib/themes.js'
+import { fmtDist, fmtEle } from './format.js'
 
 const cx = (...a) => a.filter(Boolean).join(' ')
 
 /** Sign-in button, or the signed-in email + sign-out. Renders nothing if accounts aren't configured. */
-export function AccountButton({ dark, onSignIn }) {
+export function AccountButton({ dark, onSignIn, onOpenTrophies }) {
   const { enabled, ready, user, signOut } = useAuth()
   const [busy, setBusy] = useState(false)
   if (!enabled || !ready) return null
@@ -15,6 +17,8 @@ export function AccountButton({ dark, onSignIn }) {
     <div className={cx(dark ? 'glass-dark' : 'glass-light', 'pointer-events-auto flex items-center gap-1 p-1.5')}>
       {user ? (
         <>
+          <button className={btn} onClick={onOpenTrophies}><Trophy size={15} /> My trophies</button>
+          <div className={cx('mx-0.5 h-5 w-px', dark ? 'bg-white/15' : 'bg-stone-900/10')} />
           <span className={cx('flex max-w-[220px] items-center gap-1.5 truncate px-2 text-xs', dark ? 'text-slate-300' : 'text-stone-600')}>
             <UserRound size={14} className="shrink-0" />
             <span className="truncate">{user.email}</span>
@@ -118,5 +122,69 @@ export function SaveButton({ dark, signedIn, saved, busy, onSignIn, onSave }) {
     <button className={cx(primary, busy && 'opacity-70')} onClick={onSave} disabled={busy}>
       {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {busy ? 'Saving…' : 'Save to my trophies'}
     </button>
+  )
+}
+
+/** Your saved hikes. Opening one navigates to /h/:id. */
+export function TrophyShelf({ open, onClose, dark, list, loading, error, units, currentId, onOpen }) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+  if (!open) return null
+
+  return (
+    <div className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-3 backdrop-blur-sm" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-label="My trophies"
+        onMouseDown={(e) => e.stopPropagation()}
+        className={cx(dark ? 'glass-dark !bg-slate-900/90' : 'glass-light !bg-white/90', 'max-h-[85vh] w-full max-w-2xl overflow-y-auto p-5')}
+      >
+        <div className="mb-4 flex items-center gap-2">
+          <Trophy size={18} className={dark ? 'text-cyan-300' : 'text-orange-600'} />
+          <h2 className="flex-1 font-display text-lg font-semibold">My trophies</h2>
+          <button onClick={onClose} className="rounded-md p-1 opacity-60 hover:opacity-100" aria-label="Close"><X size={18} /></button>
+        </div>
+
+        {loading && <div className="flex items-center gap-2 text-sm"><Loader2 size={16} className="animate-spin" /> Loading your hikes…</div>}
+        {error && <div className="text-sm font-medium text-red-500">Couldn't load your hikes: {error}</div>}
+        {!loading && !error && list.length === 0 && (
+          <div className={cx('rounded-xl p-6 text-center text-sm', dark ? 'bg-white/5 text-slate-300' : 'bg-white/60 text-stone-600')}>
+            No trophies yet. Drop a GPX file and hit <b>Save to my trophies</b>.
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {list.map((h) => {
+            const accent = (THEMES[h.settings?.theme] || THEMES.satellite).trail.emissive
+            return (
+              <button
+                key={h.id}
+                onClick={() => onOpen(h)}
+                className={cx('rounded-xl p-3 text-left ring-1 transition',
+                  dark ? 'bg-white/5' : 'bg-white/70',
+                  currentId === h.id
+                    ? (dark ? 'ring-cyan-300' : 'ring-orange-500')
+                    : (dark ? 'ring-white/10 hover:ring-white/30' : 'ring-stone-900/10 hover:ring-stone-900/30'))}
+              >
+                <div className="mb-2 h-1.5 w-12 rounded-full" style={{ background: accent }} />
+                <div className="truncate font-display text-sm font-semibold">{h.name}</div>
+                <div className={cx('text-[11px]', dark ? 'text-slate-400' : 'text-stone-500')}>
+                  {new Date(h.recordedAt || h.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                </div>
+                <div className="mt-2 flex gap-3 text-[11px] font-medium tabular-nums">
+                  <span>{fmtDist(h.distanceM, units)}</span>
+                  <span>+{fmtEle(h.gainM, units)}</span>
+                  <span>▲ {fmtEle(h.peakM, units)}</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
   )
 }

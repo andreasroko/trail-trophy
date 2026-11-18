@@ -1,10 +1,11 @@
 import { Suspense, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Upload } from 'lucide-react'
 import Scene from './three/Scene.jsx'
 import { HikePanel, StylePanel, CameraBar } from './ui/Panels.jsx'
-import { AccountButton, SignInDialog, SaveButton } from './ui/Account.jsx'
-import { saveHike } from './data/hikes.js'
+import { AccountButton, SignInDialog, SaveButton, TrophyShelf } from './ui/Account.jsx'
+import { saveHike, listMyHikes, getMyHike } from './data/hikes.js'
 import { useAuth } from './data/auth.jsx'
 import { parseGPX } from './lib/gpx.js'
 import { DEMO_HIKES } from './lib/demoHikes.js'
@@ -36,7 +37,10 @@ export default function App() {
   const [pageDrag, setPageDrag] = useState(false)
   const [signInOpen, setSignInOpen] = useState(false)
   const closeSignIn = useCallback(() => setSignInOpen(false), [])
-  const { user } = useAuth()
+  const { user, ready } = useAuth()
+  const { hikeId } = useParams() // set on /h/:hikeId — one of your saved hikes
+  const navigate = useNavigate()
+  const [shelf, setShelf] = useState({ open: false, list: [], loading: false, error: null })
   const [saving, setSaving] = useState(false)
   const glRef = useRef()
 
@@ -60,10 +64,11 @@ export default function App() {
   const loadText = useCallback((text, demoId = null) => {
     try {
       showHike(text, { demoId })
+      if (hikeId) navigate('/')
     } catch (e) {
       setError(e.message || 'Could not read that GPX file.')
     }
-  }, [showHike])
+  }, [showHike, hikeId, navigate])
 
   const onFile = useCallback((file) => {
     if (!/\.gpx$/i.test(file.name) && !/xml/.test(file.type)) {
@@ -76,7 +81,49 @@ export default function App() {
   const onDemo = useCallback((d) => loadText(d.gpx(), d.id), [loadText])
 
   // Boot with the first demo so the diorama renders immediately
-  useEffect(() => { onDemo(DEMO_HIKES[0]) }, [onDemo])
+  // What to show for the current URL: the demo on "/", or one of your saved hikes on "/h/:id"
+  useEffect(() => {
+    const showDemo = () => showHike(DEMO_HIKES[0].gpx(), { demoId: DEMO_HIKES[0].id })
+    if (!hikeId) { if (!hike) showDemo(); return }
+    if (hike?.saved?.id === hikeId || !ready) return
+    if (!user) {
+      if (!hike) showDemo()
+      setError('Sign in to open this saved hike.')
+      setSignInOpen(true)
+      return
+    }
+    let cancelled = false
+    getMyHike(hikeId)
+      .then(({ hike: saved, gpxText }) => {
+        if (cancelled) return
+        showHike(gpxText, { settings: saved.settings })
+        setHike((h) => ({ ...h, saved }))
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(`Couldn't open that hike: ${e.message}`)
+        if (!hike) showDemo()
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hikeId, ready, user?.id])
+
+  // Signing out leaves your private hike URL
+  useEffect(() => {
+    if (ready && !user && hike?.saved) {
+      setHike((h) => ({ ...h, saved: null }))
+      if (hikeId) navigate('/')
+    }
+  }, [ready, user, hike?.saved, hikeId, navigate])
+
+  const openShelf = async () => {
+    setShelf((s) => ({ ...s, open: true, loading: true, error: null }))
+    try {
+      setShelf({ open: true, list: await listMyHikes(), loading: false, error: null })
+    } catch (e) {
+      setShelf((s) => ({ ...s, loading: false, error: e.message }))
+    }
+  }
 
   const track = hike?.track ?? null
   const { geo, route, field, eles, metrics, demStatus, osm, wantsTiles } = useDiorama(track, settings, theme)
@@ -88,6 +135,7 @@ export default function App() {
       const saved = await saveHike({ track: hike.track, metrics, gpxText: hike.gpxText, settings })
       // Only attach if the same hike is still on screen
       setHike((h) => (h && h.gpxText === hike.gpxText ? { ...h, saved } : h))
+      navigate(`/h/${saved.id}`)
     } catch (e) {
       setError(`Couldn't save: ${e.message}`)
     } finally {
@@ -192,12 +240,12 @@ export default function App() {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 top-3 hidden justify-center px-3 lg:flex">
-        <AccountButton dark={dark} onSignIn={() => setSignInOpen(true)} />
+        <AccountButton dark={dark} onSignIn={() => setSignInOpen(true)} onOpenTrophies={openShelf} />
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-4 flex flex-col items-center gap-2 px-3">
         <div className="lg:hidden">
-          <AccountButton dark={dark} onSignIn={() => setSignInOpen(true)} />
+          <AccountButton dark={dark} onSignIn={() => setSignInOpen(true)} onOpenTrophies={openShelf} />
         </div>
         <CameraBar dark={dark} onPreset={(name) => setPreset({ name, n: Date.now() })} onSnapshot={snapshot} />
       </div>
@@ -213,6 +261,14 @@ export default function App() {
       )}
 
       <SignInDialog open={signInOpen} onClose={closeSignIn} dark={dark} />
+      <TrophyShelf
+        {...shelf}
+        dark={dark}
+        units={units}
+        currentId={hike?.saved?.id}
+        onClose={() => setShelf((s) => ({ ...s, open: false }))}
+        onOpen={(h) => { setShelf((s) => ({ ...s, open: false })); navigate(`/h/${h.id}`) }}
+      />
 
       {pageDrag && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
