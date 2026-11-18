@@ -16,6 +16,26 @@ npm run build      # production bundle in dist/
 
 Stack: React 18 · Vite 5 · Tailwind 3 · three.js 0.169 · @react-three/fiber 8 · drei 9 · @react-three/postprocessing 2 · lucide-react.
 
+## Accounts (Supabase)
+
+Visitors can use the whole diorama signed out. Signing in, with a passwordless email link, lets you:
+- save hikes to **My trophies**, each at its own URL (`/h/:id`);
+- re-save a hike's style, or delete it;
+- make a hike **public** and share its read-only link (`/t/:slug`), where signed-in visitors can save a copy.
+
+Setup for your own copy:
+1. Create a Supabase project, then apply the schema: `npx supabase link --project-ref <ref>` and `npx supabase db push --remote`.
+2. Check the privacy rules with `npx supabase db query --remote -f supabase/tests/rls_check.sql`. The intentional error at the end should read `11 passed, 0 failed`.
+3. Copy `.env.example` to `.env.local` and fill in the project URL and publishable key. For GitHub Pages, set the repository variables `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
+4. In Supabase **Authentication → URL Configuration**, add your site and `http://localhost:5173/**` as redirect URLs.
+
+Without the env values, the account UI is hidden and the app works as a standalone viewer.
+
+**Data model:**
+- `public.hikes` holds the stats, saved style, `is_public` flag and `share_slug`.
+- The raw GPX lives in the private `gpx` storage bucket at `<user_id>/<hike_id>.gpx`.
+- Row Level Security limits each user to their own rows and files; public hikes are readable by anyone.
+
 ## Features
 
 - **Diorama**: radial terrain mesh clipped to a Hexagon, Square or Circle base. It has a vertical skirt with a wavy sedimentary strata texture, a bevelled plinth, and a nameplate drawn with Canvas2D, so no fonts are downloaded.

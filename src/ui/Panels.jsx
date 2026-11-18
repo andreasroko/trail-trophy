@@ -88,11 +88,17 @@ function Metric({ icon: Icon, label, value, sub, dark }) {
   )
 }
 
-export function HikePanel({ dark, accent, track, metrics, eles, units, setUnits, onFile, onDemo, activeDemo, onScrub, error, saveSlot }) {
+export function HikePanel({ dark, accent, track, metrics, eles, units, setUnits, onFile, onDemo, activeDemo, onScrub, error, saveSlot, readOnly, onNew }) {
   const inputRef = useRef()
   const [over, setOver] = useState(false)
   return (
     <Panel dark={dark} title="Trail Trophy" icon={Mountain}>
+      {readOnly ? (
+        <div className={cx('flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-xs', dark ? 'bg-white/5' : 'bg-white/60')}>
+          <span className="font-medium">A shared trophy</span>
+          <button onClick={onNew} className={cx('font-semibold underline-offset-2 hover:underline', dark ? 'text-cyan-300' : 'text-orange-700')}>Make your own →</button>
+        </div>
+      ) : (<>
       <div
         onDragOver={(e) => { e.preventDefault(); setOver(true) }}
         onDragLeave={() => setOver(false)}
@@ -130,7 +136,9 @@ export function HikePanel({ dark, accent, track, metrics, eles, units, setUnits,
           </button>
         ))}
       </div>
+      </>)}
 
+      {readOnly && error && <div className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-600 ring-1 ring-red-500/30">{error}</div>}
       {track && metrics && (
         <>
           <div className="flex items-end justify-between gap-2">

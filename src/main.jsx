@@ -15,6 +15,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/h/:hikeId" element={<App />} />
+        <Route path="/t/:shareSlug" element={<App />} />
         {/* Unknown paths land on the app instead of a dead end */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
