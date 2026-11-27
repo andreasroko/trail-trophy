@@ -4,7 +4,7 @@
 
 Drop a GPX file and get your hike as a miniature tabletop terrain diorama: a slice of earth with strata walls on a wooden plinth, a glowing trail ribbon, start/summit/finish markers, and a brass nameplate.
 
-Runs out of the box: **no API keys, no accounts, no backend**. Terrain is procedural by default. An optional "Real DEM" mode pulls public AWS Terrarium elevation tiles, which need no key, and falls back to procedural terrain if you're offline.
+Runs out of the box: **no API keys, no accounts, no backend**. Terrain defaults to "Real DEM": public AWS Terrarium elevation tiles, which need no key. It falls back to procedural terrain if you're offline, and you can switch to procedural any time.
 
 ## Run
 
@@ -30,7 +30,7 @@ Everything runs in the browser; the site is plain static files on GitHub Pages.
 - **Trail**: a centripetal `CatmullRomCurve3` tube that sits a fixed height above the sampled terrain surface. It draws itself in when a hike loads, and an animated "hiker" bead follows it.
 - **Markers**: start and finish pins, merged into one when the hike is a loop. The high point gets a stone cairn and a waving summit flag. HTML labels can be toggled.
 - **Lighting & post-processing**: warm key light with PCF soft shadows, cool hemisphere and ambient fill, bloom, vignette, and a toggleable two-pass tilt-shift for the miniature look.
-- **Camera**: OrbitControls with damping and auto-rotate. Presets (Isometric, Top-down, Summit close-up) fly the camera there; dragging cancels the flight.
+- **Camera**: OrbitControls with damping and optional auto-rotate (off by default; tilt-shift blur is off by default too). Presets (Isometric, Top-down, Summit close-up) fly the camera there; dragging cancels the flight.
 - **Metrics**: distance (km or mi), elevation gain and loss, peak and low point, and duration. Duration comes from GPS timestamps when the file has them, otherwise from Naismith's rule.
 - **Elevation profile**: hover or drag on it to move the hiker bead along the 3D trail.
 - **Snapshot**: saves the current view as a PNG.
