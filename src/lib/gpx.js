@@ -112,9 +112,11 @@ export function computeMetrics(track, eles = null) {
     return s / c
   })
   let gain = 0, loss = 0, ref = smooth[0]
+  const cumGain = [], cumLoss = [] // running totals per point (used for splits)
   for (const e of smooth) {
     const d = e - ref
     if (d > 3) { gain += d; ref = e } else if (d < -3) { loss -= d; ref = e }
+    cumGain.push(gain); cumLoss.push(loss)
   }
 
   let peakIdx = 0, minEle = Infinity
@@ -144,6 +146,8 @@ export function computeMetrics(track, eles = null) {
     durationSource,
     isLoop: haversine(start, end) < Math.max(150, dist * 0.02),
     cumDist: cum,
+    cumGain,
+    cumLoss,
   }
 }
 

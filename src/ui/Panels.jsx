@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
 import {
   Mountain, Upload, Route, TrendingUp, Timer, MountainSnow, ChevronDown, Hexagon, Square, Circle,
-  RotateCw, Aperture, Layers, TreePine, Tag, Box, Map, Flag, Camera, Globe, Cpu, Loader2, Sparkles,
+  RotateCw, Aperture, Layers, TreePine, Tag, Box, Map, Flag, Camera, Globe, Cpu, Loader2, Sparkles, Palette,
 } from 'lucide-react'
 import { DEMO_HIKES } from '../lib/demoHikes.js'
 import { THEME_LIST } from '../lib/themes.js'
 import ElevationProfile from './ElevationProfile.jsx'
+import TrailInsights from './Insights.jsx'
 import { fmtDist, fmtEle, fmtDuration } from './format.js'
 
 const cx = (...a) => a.filter(Boolean).join(' ')
@@ -152,7 +153,7 @@ const unitToggle = (dark, units, setUnits) => (
 )
 
 /** Name + units, save controls, metric cards and the elevation profile. */
-export function HikeDetails({ dark, accent, track, metrics, eles, units, setUnits, onScrub, saveSlot, hideName }) {
+export function HikeDetails({ dark, accent, track, metrics, eles, units, setUnits, onScrub, saveSlot, hideName, grades, gradeColors, climbs, focus, onFocus }) {
   if (!track || !metrics) return null
   return (
     <>
@@ -181,12 +182,14 @@ export function HikeDetails({ dark, accent, track, metrics, eles, units, setUnit
         <Metric dark={dark} icon={MountainSnow} label="Peak" value={fmtEle(metrics.peakM, units)} sub={`low ${fmtEle(metrics.minM, units)}`} />
         <Metric dark={dark} icon={Timer} label="Duration" value={fmtDuration(metrics.durationH)} sub={metrics.durationSource} />
       </div>
-      <ElevationProfile cumDist={metrics.cumDist} eles={eles} peakIdx={metrics.peakIdx} units={units} dark={dark} accent={accent} onScrub={onScrub} />
+      <ElevationProfile cumDist={metrics.cumDist} eles={eles} peakIdx={metrics.peakIdx} units={units} dark={dark} accent={accent} onScrub={onScrub}
+        grades={grades} gradeColors={gradeColors} focus={focus} />
       {!track.hasEle && (
         <div className={cx('text-[11px]', dark ? 'text-amber-300' : 'text-amber-700')}>
           This GPX has no &lt;ele&gt; data — elevations are sampled from the terrain.
         </div>
       )}
+      <TrailInsights dark={dark} track={track} metrics={metrics} climbs={climbs ?? []} units={units} focus={focus} onFocus={onFocus} />
     </>
   )
 }
@@ -269,6 +272,7 @@ export function StyleControls({ dark, settings, set, demStatus, osmStatus }) {
           <Toggle dark={dark} icon={Layers} label="Contours" checked={settings.contours} onChange={(v) => set({ contours: v })} />
           <Toggle dark={dark} icon={TreePine} label="Trees" checked={settings.trees} onChange={(v) => set({ trees: v })} />
           <Toggle dark={dark} icon={Tag} label="Labels" checked={settings.labels} onChange={(v) => set({ labels: v })} />
+          <Toggle dark={dark} icon={Palette} label="Steepness" checked={settings.gradeColors} onChange={(v) => set({ gradeColors: v })} />
         </div>
       </Section>
     </>

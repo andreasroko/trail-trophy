@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { terrainY } from '../lib/terrain.js'
+import { gradeAtFrac, gradeRGB } from '../lib/insights.js'
 
 const RADIUS = 0.034
 const LIFT = 0.05 // float above the surface to avoid z-fighting
@@ -20,7 +21,27 @@ export function useTrailPoints(route, field, exag) {
   )
 }
 
-export default function Trail({ points, theme, scrub, animKey }) {
+/** Outline around the part of the trail that's selected (a climb or a split). */
+function Highlight({ points, focus, glow }) {
+  const geometry = useMemo(() => {
+    const n = points.length - 1
+    const i0 = Math.max(0, Math.floor(focus.f0 * n)), i1 = Math.min(n, Math.ceil(focus.f1 * n))
+    const pts = points.slice(i0, i1 + 1)
+    if (pts.length < 2) return null
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal')
+    return new THREE.TubeGeometry(curve, pts.length * 2, RADIUS * 2.6, 10, false)
+  }, [points, focus])
+  useEffect(() => () => geometry?.dispose(), [geometry])
+  if (!geometry) return null
+  return (
+    <mesh geometry={geometry} renderOrder={2}>
+      {/* Back faces only: reads as an outline around the trail without hiding its steepness colours */}
+      <meshBasicMaterial color={glow ? '#7dd3fc' : '#1c1917'} side={THREE.BackSide} transparent opacity={glow ? 0.35 : 1} />
+    </mesh>
+  )
+}
+
+export default function Trail({ points, theme, scrub, animKey, grades, gradeColors, focus }) {
   const meshRef = useRef()
   const beadRef = useRef()
   const haloRef = useRef()
@@ -29,18 +50,30 @@ export default function Trail({ points, theme, scrub, animKey }) {
 
   const geometry = useMemo(() => {
     const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal')
-    return new THREE.TubeGeometry(curve, points.length * 2, RADIUS, 8, false)
-  }, [points])
+    const tube = new THREE.TubeGeometry(curve, points.length * 2, RADIUS, 8, false)
+    if (grades) {
+      // One colour per ring of the tube, from the steepness at that point along the trail
+      const rings = tube.parameters.tubularSegments + 1, ring = tube.parameters.radialSegments + 1
+      const col = new Float32Array(rings * ring * 3)
+      for (let i = 0; i < rings; i++) {
+        const [r, g, b] = gradeRGB(gradeAtFrac(grades, i / (rings - 1)))
+        for (let j = 0; j < ring; j++) col.set([r, g, b], (i * ring + j) * 3)
+      }
+      tube.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    }
+    return tube
+  }, [points, grades])
   useEffect(() => () => geometry.dispose(), [geometry])
 
   // Restart the "draw-on" animation whenever a new hike is loaded
   useEffect(() => { draw.current = 0; walk.current = 0 }, [animKey])
 
   const glow = theme.dark
+  const byGrade = gradeColors && !!grades
   const trailColor = useMemo(() => {
-    const c = new THREE.Color(theme.trail.color)
-    return glow ? c.multiplyScalar(2.2) : c // HDR colour → picked up by bloom
-  }, [theme, glow])
+    const c = new THREE.Color(byGrade ? '#ffffff' : theme.trail.color)
+    return glow ? c.multiplyScalar(byGrade ? 1.8 : 2.2) : c // HDR colour → picked up by bloom
+  }, [theme, glow, byGrade])
 
   useFrame((state, dt) => {
     if (draw.current < 1) {
@@ -62,13 +95,16 @@ export default function Trail({ points, theme, scrub, animKey }) {
     <group>
       <mesh ref={meshRef} geometry={geometry} castShadow>
         <meshStandardMaterial
+          key={byGrade ? 'grade' : 'theme'}
           color={trailColor}
-          emissive={theme.trail.emissive}
-          emissiveIntensity={theme.trail.emissiveIntensity}
+          vertexColors={byGrade}
+          emissive={byGrade ? '#000000' : theme.trail.emissive}
+          emissiveIntensity={byGrade ? 0 : theme.trail.emissiveIntensity}
           roughness={0.35}
           toneMapped={!glow}
         />
       </mesh>
+      {focus && <Highlight points={points} focus={focus} glow={glow} />}
       {/* hiker bead */}
       <mesh ref={beadRef} castShadow>
         <sphereGeometry args={[0.075, 20, 20]} />
