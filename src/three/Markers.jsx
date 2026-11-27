@@ -102,6 +102,34 @@ function SummitFlag({ position, color, label, showLabel, dark }) {
   )
 }
 
+/** Your own pins: a slim pole with a coloured head and its label. */
+export function TrailPins({ pins, points, pointAt, color, dark, showLabels }) {
+  return (
+    <group>
+      {pins.map((p, n) => {
+        const pos = pointAt(points, p.f)
+        return (
+          <group key={p.id} position={pos}>
+            <mesh position={[0, 0.2, 0]} castShadow>
+              <cylinderGeometry args={[0.01, 0.01, 0.4, 6]} />
+              <meshStandardMaterial color="#e7e5e4" metalness={0.5} roughness={0.35} />
+            </mesh>
+            <mesh position={[0, 0.42, 0]} castShadow>
+              <sphereGeometry args={[0.06, 18, 18]} />
+              <meshStandardMaterial color={color} roughness={0.3} emissive={color} emissiveIntensity={dark ? 0.9 : 0.1} />
+            </mesh>
+            {showLabels && (
+              <Html position={[0, 0.52, 0]} center zIndexRange={[20, 0]}>
+                <Label dark={dark} accent={color}>{p.label || `Pin ${n + 1}`}</Label>
+              </Html>
+            )}
+          </group>
+        )
+      })}
+    </group>
+  )
+}
+
 export default function Markers({ start, finish, summit, isLoop, theme, showLabels, summitLabel }) {
   const m = theme.marker
   return (

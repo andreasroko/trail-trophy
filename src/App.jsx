@@ -11,6 +11,8 @@ import { saveHike, listMyHikes, getMyHike, updateHike, deleteHike, pickSavedSett
 import { decodeShare, shareUrl } from './data/share.js'
 import { parseGPX } from './lib/gpx.js'
 import { DEMO_HIKES } from './lib/demoHikes.js'
+import { cleanPins, MAX_PINS } from './lib/insights.js'
+import { pinColor } from './ui/Pins.jsx'
 import { THEMES } from './lib/themes.js'
 import { fmtDist, fmtEle } from './ui/format.js'
 import { useDiorama } from './hooks/useDiorama.js'
@@ -26,6 +28,7 @@ const DEFAULTS = {
   trees: true,
   labels: true,
   gradeColors: true,
+  pins: [], // your own markers along the trail: { id, f (fraction of the distance), label }
 }
 
 export default function App() {
@@ -37,6 +40,8 @@ export default function App() {
   const [preset, setPreset] = useState({ name: 'showcase', n: 0 })
   const [scrub, setScrub] = useState(null)
   const [focus, setFocusState] = useState(null) // highlighted stretch of trail {key,f0,f1}
+  const [pinMode, setPinMode] = useState(false) // next tap on the trail/profile drops a pin
+  const [editingPin, setEditingPin] = useState(null)
   const [animKey, setAnimKey] = useState(0)
   const [pageDrag, setPageDrag] = useState(false)
   const { hikeId } = useParams() // /h/:hikeId = one of your trophies
@@ -60,7 +65,11 @@ export default function App() {
     const track = parseGPX(gpxText)
     setHike({ gpxText, track, demoId })
     setFocusState(null)
-    if (style) setSettings({ ...DEFAULTS, ...style })
+    // Pins belong to a hike: restore the saved ones, or start with none
+    if (style) setSettings({ ...DEFAULTS, ...style, pins: cleanPins(style.pins) })
+    else setSettings((s) => ({ ...s, pins: [] }))
+    setPinMode(false)
+    setEditingPin(null)
     setError(null)
     setAnimKey((k) => k + 1)
     setPreset({ name: 'showcase', n: Date.now() })
@@ -239,6 +248,24 @@ export default function App() {
   const isMobile = useIsMobile()
   const isTouch = useIsTouch()
   const onPreset = (name) => setPreset({ name, n: Date.now() })
+  const addPin = (f) => {
+    const id = Math.random().toString(36).slice(2, 8)
+    setSettings((s) => (s.pins.length >= MAX_PINS ? s : { ...s, pins: [...s.pins, { id, f: Math.round(f * 1e4) / 1e4, label: '' }].sort((a, b) => a.f - b.f) }))
+    setPinMode(false)
+    setEditingPin(id)
+  }
+  const updatePin = (id, label) => setSettings((s) => ({ ...s, pins: s.pins.map((p) => (p.id === id ? { ...p, label } : p)) }))
+  const removePin = (id) => {
+    setSettings((s) => ({ ...s, pins: s.pins.filter((p) => p.id !== id) }))
+    if (focus?.key === `pin-${id}`) setFocusState(null)
+  }
+  useEffect(() => {
+    if (!pinMode) return
+    const onKey = (e) => e.key === 'Escape' && setPinMode(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pinMode])
+
   const setFocus = (f) => {
     setFocusState(f)
     if (f) setPreset({ name: 'focus', n: Date.now(), f0: f.f0, f1: f.f1 })
@@ -259,6 +286,7 @@ export default function App() {
   const hikeProps = {
     accent, track, metrics, eles, units, setUnits, onFile, onDemo, onScrub: setScrub, saveSlot,
     grades, climbs, gradeColors: settings.gradeColors, focus, onFocus: setFocus,
+    pinProps: { pins: settings.pins, pinMode, setPinMode, editingPin, setEditingPin, onUpdatePin: updatePin, onRemovePin: removePin, onPickTrail: addPin },
     activeDemo: hike?.demoId ?? null,
     touch: isTouch,
   }
@@ -266,7 +294,7 @@ export default function App() {
 
   return (
     <div className="relative h-full w-full" style={{ background: theme.background }}>
-      <div className="absolute inset-x-0 top-0 bottom-0 max-md:bottom-[150px] md:max-lg:bottom-0">
+      <div className={`absolute inset-x-0 top-0 bottom-0 max-md:bottom-[150px] md:max-lg:bottom-0 ${pinMode ? 'cursor-crosshair' : ''}`}>
       <Canvas
         shadows
         dpr={[1, 2]}
@@ -283,6 +311,9 @@ export default function App() {
               metrics={metrics}
               grades={grades}
               focus={focus}
+              pinMode={pinMode}
+              onPickTrail={addPin}
+              pinColor={pinColor(theme.dark)}
               settings={{ ...settings, exaggeration: exag }}
               theme={theme}
               preset={preset}

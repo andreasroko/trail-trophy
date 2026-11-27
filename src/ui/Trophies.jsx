@@ -56,7 +56,7 @@ export function SaveButton({ dark, saved, dirty, busy, readOnly, onSave, onSaveS
   } else if (dirty) {
     main = (
       <button className={cx(primary, 'flex-1', busy && 'opacity-70')} onClick={onSaveStyle} disabled={busy}>
-        {busy ? spinner : <Save size={14} />} {busy ? 'Saving…' : 'Save style changes'}
+        {busy ? spinner : <Save size={14} />} {busy ? 'Saving…' : 'Save changes'}
       </button>
     )
   } else {

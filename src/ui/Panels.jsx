@@ -7,6 +7,7 @@ import { DEMO_HIKES } from '../lib/demoHikes.js'
 import { THEME_LIST } from '../lib/themes.js'
 import ElevationProfile from './ElevationProfile.jsx'
 import TrailInsights from './Insights.jsx'
+import PinList, { pinColor } from './Pins.jsx'
 import { fmtDist, fmtEle, fmtDuration } from './format.js'
 
 const cx = (...a) => a.filter(Boolean).join(' ')
@@ -153,7 +154,7 @@ const unitToggle = (dark, units, setUnits) => (
 )
 
 /** Name + units, save controls, metric cards and the elevation profile. */
-export function HikeDetails({ dark, accent, track, metrics, eles, units, setUnits, onScrub, saveSlot, hideName, grades, gradeColors, climbs, focus, onFocus }) {
+export function HikeDetails({ dark, accent, track, metrics, eles, units, setUnits, onScrub, saveSlot, hideName, grades, gradeColors, climbs, focus, onFocus, pinProps, readOnly }) {
   if (!track || !metrics) return null
   return (
     <>
@@ -183,12 +184,14 @@ export function HikeDetails({ dark, accent, track, metrics, eles, units, setUnit
         <Metric dark={dark} icon={Timer} label="Duration" value={fmtDuration(metrics.durationH)} sub={metrics.durationSource} />
       </div>
       <ElevationProfile cumDist={metrics.cumDist} eles={eles} peakIdx={metrics.peakIdx} units={units} dark={dark} accent={accent} onScrub={onScrub}
-        grades={grades} gradeColors={gradeColors} focus={focus} />
+        grades={grades} gradeColors={gradeColors} focus={focus}
+        pins={pinProps?.pins} pinMode={pinProps?.pinMode} onPickTrail={pinProps?.onPickTrail} pinColor={pinColor(dark)} />
       {!track.hasEle && (
         <div className={cx('text-[11px]', dark ? 'text-amber-300' : 'text-amber-700')}>
           This GPX has no &lt;ele&gt; data — elevations are sampled from the terrain.
         </div>
       )}
+      {pinProps && <PinList dark={dark} track={track} metrics={metrics} eles={eles} units={units} readOnly={readOnly} focus={focus} onFocus={onFocus} {...pinProps} />}
       <TrailInsights dark={dark} track={track} metrics={metrics} climbs={climbs ?? []} units={units} focus={focus} onFocus={onFocus} />
     </>
   )
@@ -200,7 +203,7 @@ export function HikePanel({ dark, onNew, readOnly, error, ...rest }) {
     <Panel dark={dark} title="Trail Trophy" icon={Mountain}>
       {readOnly ? <SharedBanner dark={dark} onNew={onNew} /> : <HikeLoader dark={dark} {...rest} />}
       {errorBox(error)}
-      <HikeDetails dark={dark} {...rest} />
+      <HikeDetails dark={dark} readOnly={readOnly} {...rest} />
     </Panel>
   )
 }

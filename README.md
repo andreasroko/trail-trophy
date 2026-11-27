@@ -35,6 +35,7 @@ Everything runs in the browser; the site is plain static files on GitHub Pages.
 - **Elevation profile**: hover or drag on it to move the hiker bead along the 3D trail.
 - **Steepness**: the 3D trail and the profile line are coloured by grade (green under 5% through red above 25%), measured over about ±60 m of smoothed elevation. It can be turned off in Effects & overlays and is saved with the trophy.
 - **Steepest climbs**: the three steepest non-overlapping stretches (each about 1/12 of the hike, 200–1000 m, at least 8%). Tapping one outlines it on the trail and flies the camera there.
+- **Pins**: *Add pin*, then tap the 3D trail or the profile, and name it (Refuge, Water, Viewpoint… or anything). Each pin shows its distance, elevation and time from the start, appears on the trail and the profile, and can be renamed or deleted. Pins are stored as a fraction of the trail's length, so they're saved with trophies and carried in share links (read-only there).
 - **Splits**: climb, descent and time per km or mile. Climb and descent add up exactly to the headline totals. Times come from GPS timestamps when present, otherwise from Naismith's rule per split. Rows can be tapped like climbs.
 - **Snapshot**: saves the current view as a PNG.
 - **Phones & tablets**: below 1024px wide (and on landscape phones) the panels become a bottom sheet with Hike / Style / New hike tabs, so the diorama keeps the screen. Touch screens get finger-sized controls and a file picker that works with iOS Files.
