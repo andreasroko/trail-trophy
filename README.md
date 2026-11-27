@@ -46,6 +46,6 @@ Everything runs in the browser; the site is plain static files on GitHub Pages.
 | `mapTiles.js` | Fetches up to 36 OpenStreetMap tiles around the hike, stitches them together, and crops the result to the diorama's footprint to use as the terrain texture. Attribution is shown on screen as OSM's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) requires. |
 | `noise.js` | Seeded simplex noise, fBm, and ridged noise. |
 | `themes.js` | Per-theme palette, terrain colour function, lights, and bloom. |
-| `demoHikes.js` | Mt. Rainier (Camp Muir) and Half Dome. Both are generated as real GPX XML and go through the same parser as an uploaded file. |
+| `demoHikes.js` | Mt. Olympus (Prionia → Mytikas, a real recorded track in `demo/olympus-mytikas.gpx`, shown by default), plus Mt. Rainier (Camp Muir) and Half Dome, which are generated as GPX XML. All go through the same parser as an uploaded file. |
 
 GPX files without `<ele>` still work: the terrain is generated without the route correction, and elevations are sampled from the terrain instead.

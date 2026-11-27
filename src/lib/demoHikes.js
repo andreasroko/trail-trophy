@@ -1,3 +1,4 @@
+import olympusGpx from './demo/olympus-mytikas.gpx?raw'
 // Built-in demo hikes. Generated as real GPX XML so they flow through the same parser as uploads.
 // Waypoints approximate the actual routes; densification adds switchbacks on steep pitches.
 import { mulberry32 } from './noise.js'
@@ -97,6 +98,13 @@ const HALF_DOME = [
 ]
 
 export const DEMO_HIKES = [
+  {
+    // A real recorded track (Prionia trailhead → Skala → Mytikas, the summit of Greece)
+    id: 'olympus',
+    label: 'Mt. Olympus · Mytikas',
+    blurb: 'Prionia → Spilios Agapitos refuge → Mytikas',
+    gpx: () => olympusGpx,
+  },
   {
     id: 'rainier',
     label: 'Mt. Rainier · Camp Muir',

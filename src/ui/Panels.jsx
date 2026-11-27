@@ -126,7 +126,7 @@ export function HikeLoader({ dark, onFile, onDemo, activeDemo, touch }) {
           onChange={(e) => { const f = e.target.files[0]; f && onFile(f); e.target.value = '' }} />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {DEMO_HIKES.map((d) => (
           <button
             key={d.id}
@@ -138,7 +138,7 @@ export function HikeLoader({ dark, onFile, onDemo, activeDemo, touch }) {
                 : dark ? 'bg-white/5 hover:bg-white/10' : 'bg-white/60 hover:bg-white/90',
             )}
           >
-            <div className="flex items-center gap-1 text-[11px] font-semibold"><Sparkles size={11} /> Load demo</div>
+            <div className="flex items-center gap-1 text-[11px] font-semibold"><Sparkles size={11} /> Demo</div>
             <div className="text-[11px] leading-tight opacity-80">{d.label}</div>
           </button>
         ))}
