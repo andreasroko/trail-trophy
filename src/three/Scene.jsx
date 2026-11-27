@@ -4,21 +4,35 @@ import { OrbitControls } from '@react-three/drei'
 import { EffectComposer, Bloom, TiltShift2, Vignette } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import Terrain from './Terrain.jsx'
-import Trail, { useTrailPoints } from './Trail.jsx'
+import Trail, { useTrailPoints, pointAt } from './Trail.jsx'
 import Markers from './Markers.jsx'
 import Trees from './Trees.jsx'
 import { terrainY } from '../lib/terrain.js'
 
 /** Smoothly flies camera + orbit target to a preset; any user drag cancels the flight. */
-function CameraRig({ preset, summit }) {
+function CameraRig({ preset, summit, points }) {
   const { camera, controls } = useThree()
   const goal = useRef(null)
   const summitRef = useRef(summit)
   summitRef.current = summit
+  const pointsRef = useRef(points)
+  pointsRef.current = points
 
   // Only re-fly when a preset is (re)selected — not when the summit moves due to exaggeration
   useEffect(() => {
     if (!preset) return
+    if (preset.name === 'focus') {
+      // Frame one stretch of trail: keep the current viewing direction, move in close
+      const pts = pointsRef.current
+      const a = pointAt(pts, preset.f0), b = pointAt(pts, preset.f1), mid = pointAt(pts, (preset.f0 + preset.f1) / 2)
+      const span = Math.max(a.distanceTo(b), a.distanceTo(mid) + mid.distanceTo(b))
+      const dir = camera.position.clone().sub(controls?.target ?? new THREE.Vector3()).normalize()
+      dir.y = Math.max(dir.y, 0.55)
+      dir.normalize()
+      const dist = Math.min(16, Math.max(7.5, span * 3)) * Math.max(1, 1.2 / Math.max(0.5, camera.aspect))
+      goal.current = { pos: mid.clone().addScaledVector(dir, dist), target: mid }
+      return
+    }
     const s = summitRef.current
     // Back off on portrait / narrow viewports so the whole base stays in frame
     const k = Math.max(1, 1.45 / Math.max(0.5, camera.aspect))
@@ -81,7 +95,7 @@ function Lights({ theme }) {
   )
 }
 
-export default function Scene({ field, geo, route, metrics, settings, theme, preset, scrub, animKey, title, subtitle, units, mapTexture }) {
+export default function Scene({ field, geo, route, metrics, grades, focus, settings, theme, preset, scrub, animKey, title, subtitle, units, mapTexture }) {
   const { shape, exaggeration: exag } = settings
   const points = useTrailPoints(route, field, exag)
 
@@ -107,7 +121,7 @@ export default function Scene({ field, geo, route, metrics, settings, theme, pre
       <Lights theme={theme} />
       <Terrain field={field} shape={shape} exag={exag} theme={theme} contours={settings.contours} title={title} subtitle={subtitle} mapTexture={theme.mapTiles ? mapTexture : null} />
       {settings.trees && theme.id !== 'tactical' && !theme.mapTiles && <Trees field={field} shape={shape} exag={exag} route={route} theme={theme} />}
-      <Trail points={points} theme={theme} scrub={scrub} animKey={animKey} />
+      <Trail points={points} theme={theme} scrub={scrub} animKey={animKey} grades={grades} gradeColors={settings.gradeColors} focus={focus} />
       <Markers {...markers} isLoop={metrics.isLoop} theme={theme} showLabels={settings.labels} summitLabel={peakLabel} />
 
       <OrbitControls
@@ -120,7 +134,7 @@ export default function Scene({ field, geo, route, metrics, settings, theme, pre
         maxDistance={40}
         maxPolarAngle={Math.PI * 0.49}
       />
-      <CameraRig preset={preset} summit={summitVec} />
+      <CameraRig preset={preset} summit={summitVec} points={points} />
 
       <EffectComposer key={settings.tiltShift ? 'ts' : 'plain'} multisampling={4}>
         <Bloom mipmapBlur luminanceThreshold={0.9} luminanceSmoothing={0.2} intensity={theme.bloom} />

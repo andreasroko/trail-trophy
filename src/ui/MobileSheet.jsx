@@ -87,7 +87,8 @@ export default function MobileSheet({ dark, track, metrics, units, error, readOn
               <>
                 {readOnly && <SharedBanner dark={dark} onNew={onNew} />}
                 {error && <div className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-600 ring-1 ring-red-500/30">{error}</div>}
-                <HikeDetails dark={dark} {...hikeProps} hideName />
+                {/* Picking a climb/split closes the sheet so the highlighted stretch is visible */}
+                <HikeDetails dark={dark} {...hikeProps} hideName onFocus={(f) => { hikeProps.onFocus(f); if (f) setTab(null) }} />
               </>
             )}
             {tab === 'style' && <StyleControls dark={dark} {...styleProps} />}

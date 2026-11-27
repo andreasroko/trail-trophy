@@ -25,6 +25,7 @@ const DEFAULTS = {
   contours: true,
   trees: true,
   labels: true,
+  gradeColors: true,
 }
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
   const [units, setUnits] = useState('metric')
   const [preset, setPreset] = useState({ name: 'showcase', n: 0 })
   const [scrub, setScrub] = useState(null)
+  const [focus, setFocusState] = useState(null) // highlighted stretch of trail {key,f0,f1}
   const [animKey, setAnimKey] = useState(0)
   const [pageDrag, setPageDrag] = useState(false)
   const { hikeId } = useParams() // /h/:hikeId = one of your trophies
@@ -57,6 +59,7 @@ export default function App() {
   const showHike = useCallback((gpxText, { demoId = null, settings: style = null } = {}) => {
     const track = parseGPX(gpxText)
     setHike({ gpxText, track, demoId })
+    setFocusState(null)
     if (style) setSettings({ ...DEFAULTS, ...style })
     setError(null)
     setAnimKey((k) => k + 1)
@@ -152,7 +155,7 @@ export default function App() {
   }
 
   const track = hike?.track ?? null
-  const { geo, route, field, eles, metrics, demStatus, osm, wantsTiles } = useDiorama(track, settings, theme)
+  const { geo, route, field, eles, metrics, grades, climbs, demStatus, osm, wantsTiles } = useDiorama(track, settings, theme)
 
   const save = async () => {
     if (!hike || !metrics) return
@@ -236,6 +239,10 @@ export default function App() {
   const isMobile = useIsMobile()
   const isTouch = useIsTouch()
   const onPreset = (name) => setPreset({ name, n: Date.now() })
+  const setFocus = (f) => {
+    setFocusState(f)
+    if (f) setPreset({ name: 'focus', n: Date.now(), f0: f.f0, f1: f.f1 })
+  }
 
   const saveSlot = (
     <SaveButton
@@ -251,6 +258,7 @@ export default function App() {
   )
   const hikeProps = {
     accent, track, metrics, eles, units, setUnits, onFile, onDemo, onScrub: setScrub, saveSlot,
+    grades, climbs, gradeColors: settings.gradeColors, focus, onFocus: setFocus,
     activeDemo: hike?.demoId ?? null,
     touch: isTouch,
   }
@@ -273,6 +281,8 @@ export default function App() {
               geo={geo}
               route={route}
               metrics={metrics}
+              grades={grades}
+              focus={focus}
               settings={{ ...settings, exaggeration: exag }}
               theme={theme}
               preset={preset}

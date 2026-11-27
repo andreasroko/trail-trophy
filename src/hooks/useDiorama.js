@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { projectTrack, resampleRoute, computeMetrics } from '../lib/gpx.js'
 import { synthesizeField, fetchDEMField, sampleField } from '../lib/terrain.js'
 import { fetchMapTexture } from '../lib/mapTiles.js'
+import { gradeProfile, steepestClimbs } from '../lib/insights.js'
 
 /**
  * Track + settings → everything the scene and panels need:
@@ -45,5 +46,9 @@ export function useDiorama(track, settings, theme) {
   }, [track, geo, field])
   const metrics = useMemo(() => (track && eles ? computeMetrics(track, eles) : null), [track, eles])
 
-  return { geo, route, field, eles, metrics, demStatus: dem.status, osm, wantsTiles }
+  // Steepness along the trail and the steepest climbs
+  const grades = useMemo(() => (metrics && eles ? gradeProfile(metrics.cumDist, eles) : null), [metrics, eles])
+  const climbs = useMemo(() => (grades ? steepestClimbs(grades) : []), [grades])
+
+  return { geo, route, field, eles, metrics, grades, climbs, demStatus: dem.status, osm, wantsTiles }
 }

@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import { fmtDist, fmtEle } from './format.js'
+import { GRADE_LEGEND, gradeAtFrac, gradeCSS } from '../lib/insights.js'
 
 const W = 300, H = 84, PAD = 4
 
 /** Elevation profile; hovering scrubs the hiker bead along the 3D trail. */
-export default function ElevationProfile({ cumDist, eles, peakIdx, units, dark, accent, onScrub }) {
+export default function ElevationProfile({ cumDist, eles, peakIdx, units, dark, accent, onScrub, grades, gradeColors, focus }) {
   const [hover, setHover] = useState(null)
   const svgRef = useRef()
 
@@ -22,6 +23,14 @@ export default function ElevationProfile({ cumDist, eles, peakIdx, units, dark, 
     const area = `${path}L${sx(total)},${H}L${sx(0)},${H}Z`
     return { path, area, sx, sy, total, lo, hi }
   }, [cumDist, eles])
+
+  // Horizontal gradient that colours the profile line by steepness
+  const byGrade = gradeColors && grades
+  const stops = useMemo(() => {
+    if (!byGrade) return null
+    const n = 120
+    return Array.from({ length: n + 1 }, (_, i) => ({ o: i / n, c: gradeCSS(gradeAtFrac(grades, i / n)) }))
+  }, [byGrade, grades])
 
   const move = (e) => {
     const r = svgRef.current.getBoundingClientRect()
@@ -56,10 +65,19 @@ export default function ElevationProfile({ cumDist, eles, peakIdx, units, dark, 
             <stop offset="0" stopColor={accent} stopOpacity="0.45" />
             <stop offset="1" stopColor={accent} stopOpacity="0.02" />
           </linearGradient>
+          {stops && (
+            <linearGradient id="tt-grade" x1="0" x2="1" y1="0" y2="0">
+              {stops.map((st) => <stop key={st.o} offset={st.o} stopColor={st.c} />)}
+            </linearGradient>
+          )}
         </defs>
         {[0.25, 0.5, 0.75].map((g) => <line key={g} x1="0" x2={W} y1={H * g} y2={H * g} stroke={grid} />)}
+        {focus && (
+          <rect x={sx(focus.f0 * total)} width={Math.max(1.5, sx(focus.f1 * total) - sx(focus.f0 * total))} y="0" height={H}
+            fill={dark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.08)'} />
+        )}
         <path d={area} fill="url(#tt-prof)" />
-        <path d={path} fill="none" stroke={accent} strokeWidth="1.8" strokeLinejoin="round" />
+        <path d={path} fill="none" stroke={stops ? 'url(#tt-grade)' : accent} strokeWidth={stops ? 2.4 : 1.8} strokeLinejoin="round" />
         <circle cx={sx(cumDist[peakIdx])} cy={sy(eles[peakIdx])} r="3.2" fill={accent} stroke="white" strokeWidth="1.5" />
         {hover && (
           <g>
@@ -68,12 +86,22 @@ export default function ElevationProfile({ cumDist, eles, peakIdx, units, dark, 
           </g>
         )}
       </svg>
+      {stops && (
+        <div className={`mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] tabular-nums ${dark ? 'text-slate-400' : 'text-stone-500'}`}>
+          <span className="font-medium uppercase tracking-wider">Steepness</span>
+          {GRADE_LEGEND.map((l) => (
+            <span key={l.label} className="flex items-center gap-1">
+              <span className="inline-block h-1.5 w-3 rounded-full" style={{ background: gradeCSS(l.g) }} />{l.label}
+            </span>
+          ))}
+        </div>
+      )}
       {hover && (
         <div
           className={`pointer-events-none absolute top-4 -translate-x-1/2 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums shadow ${dark ? 'bg-slate-800 text-slate-100' : 'bg-stone-900 text-white'}`}
           style={{ left: `${Math.min(85, Math.max(15, hover.f * 100))}%` }}
         >
-          {fmtDist(hover.d, units)} · {fmtEle(hover.ele, units)}
+          {fmtDist(hover.d, units)} · {fmtEle(hover.ele, units)}{grades && ` · ${Math.round(gradeAtFrac(grades, hover.f) * 100)}%`}
         </div>
       )}
     </div>

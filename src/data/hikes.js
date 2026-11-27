@@ -2,7 +2,7 @@
 // Each record keeps the raw GPX so the diorama can be rebuilt exactly.
 
 /** Diorama style fields stored with a hike (view-only toggles like auto-rotate are left out). */
-export const SAVED_SETTING_KEYS = ['shape', 'theme', 'exaggeration', 'terrainSource', 'contours', 'trees', 'labels', 'tiltShift']
+export const SAVED_SETTING_KEYS = ['shape', 'theme', 'exaggeration', 'terrainSource', 'contours', 'trees', 'labels', 'tiltShift', 'gradeColors']
 // Missing keys are left out (not undefined) so they fall back to the defaults when loaded
 export const pickSavedSettings = (s) => Object.fromEntries(SAVED_SETTING_KEYS.filter((k) => s[k] !== undefined).map((k) => [k, s[k]]))
 
