@@ -4,4 +4,3 @@ dist/
 *.log
 .env*
 .vite/
-!.env.example

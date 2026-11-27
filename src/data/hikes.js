@@ -1,117 +1,113 @@
-// Saved hikes: rows in public.hikes, raw GPX in the private 'gpx' storage bucket.
-// Who can see or change what is enforced by Row Level Security (supabase/migrations), not here.
-import { supabase } from './supabase.js'
+// Saved hikes ("My trophies") live in this browser's IndexedDB: no account, no server.
+// Each record keeps the raw GPX so the diorama can be rebuilt exactly.
 
 /** Diorama style fields stored with a hike (view-only toggles like auto-rotate are left out). */
 export const SAVED_SETTING_KEYS = ['shape', 'theme', 'exaggeration', 'terrainSource', 'contours', 'trees', 'labels', 'tiltShift']
-export const pickSavedSettings = (s) => Object.fromEntries(SAVED_SETTING_KEYS.map((k) => [k, s[k]]))
+// Missing keys are left out (not undefined) so they fall back to the defaults when loaded
+export const pickSavedSettings = (s) => Object.fromEntries(SAVED_SETTING_KEYS.filter((k) => s[k] !== undefined).map((k) => [k, s[k]]))
 
-const COLUMNS =
-  'id, name, recorded_at, distance_m, gain_m, peak_m, duration_h, start_lat, start_lon, gpx_path, settings, is_public, share_slug, created_at, updated_at'
+const DB_NAME = 'trail-trophy'
+const STORE = 'hikes'
+let dbPromise
 
-const fromRow = (r) => ({
-  id: r.id,
-  name: r.name,
-  recordedAt: r.recorded_at,
-  distanceM: r.distance_m,
-  gainM: r.gain_m,
-  peakM: r.peak_m,
-  durationH: r.duration_h,
-  startLat: r.start_lat,
-  startLon: r.start_lon,
-  gpxPath: r.gpx_path,
-  settings: r.settings || {},
-  isPublic: r.is_public,
-  shareSlug: r.share_slug,
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-})
-
-const unwrap = ({ data, error }) => {
-  if (error) throw new Error(error.message)
-  return data
-}
-
-async function currentUserId() {
-  const { data } = await supabase.auth.getSession()
-  const id = data.session?.user?.id
-  if (!id) throw new Error('Sign in to save hikes.')
-  return id
-}
-
-/** Upload the GPX, then create the row. Cleans up the file if the row can't be created. */
-export async function saveHike({ track, metrics, gpxText, settings }) {
-  const uid = await currentUserId()
-  const id = crypto.randomUUID()
-  const path = `${uid}/${id}.gpx`
-  const t0 = track.points.find((p) => p.time != null)?.time
-
-  unwrap(await supabase.storage.from('gpx').upload(path, new Blob([gpxText], { type: 'application/gpx+xml' }), {
-    contentType: 'application/gpx+xml',
-    upsert: false,
-  }))
-  try {
-    const row = unwrap(await supabase.from('hikes').insert({
-      id,
-      user_id: uid,
-      name: track.name.slice(0, 200),
-      recorded_at: t0 ? new Date(t0).toISOString() : null,
-      distance_m: metrics.distanceM,
-      gain_m: metrics.gainM,
-      peak_m: metrics.peakM,
-      duration_h: metrics.durationH,
-      start_lat: track.points[0].lat,
-      start_lon: track.points[0].lon,
-      gpx_path: path,
-      settings: pickSavedSettings(settings),
-    }).select(COLUMNS).single())
-    return fromRow(row)
-  } catch (e) {
-    await supabase.storage.from('gpx').remove([path]) // don't leave an orphaned file behind
-    throw e
+function openDb() {
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) return reject(new Error('This browser has no local storage for trophies.'))
+      const req = indexedDB.open(DB_NAME, 1)
+      req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'id' })
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(new Error(req.error?.message || 'Could not open local storage (private browsing?).'))
+    })
+    dbPromise.catch(() => { dbPromise = null }) // allow a retry
   }
+  return dbPromise
 }
 
-/** Your saved hikes, newest first. (RLS also exposes everyone's *public* hikes, so filter by owner.) */
+/** Run one request in a transaction; resolves with its result once the transaction commits. */
+async function run(mode, fn) {
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, mode)
+    const req = fn(tx.objectStore(STORE))
+    tx.oncomplete = () => resolve(req?.result)
+    tx.onerror = tx.onabort = () => reject(new Error(tx.error?.message || 'Local storage error'))
+  })
+}
+
+// Everything except the (large) GPX text, for lists
+const summary = ({ gpxText, ...rest }) => rest
+
+/** Save the hike on screen as a new trophy. */
+export async function saveHike({ track, metrics, gpxText, settings }) {
+  const t0 = track.points.find((p) => p.time != null)?.time
+  const now = new Date().toISOString()
+  const record = {
+    id: crypto.randomUUID(),
+    name: track.name.slice(0, 200),
+    recordedAt: t0 ? new Date(t0).toISOString() : null,
+    distanceM: metrics.distanceM,
+    gainM: metrics.gainM,
+    peakM: metrics.peakM,
+    durationH: metrics.durationH,
+    settings: pickSavedSettings(settings),
+    gpxText,
+    createdAt: now,
+    updatedAt: now,
+  }
+  await run('readwrite', (s) => s.add(record))
+  // Ask the browser not to evict our data under storage pressure (best effort, may be ignored)
+  navigator.storage?.persist?.().catch(() => {})
+  return summary(record)
+}
+
+/** All trophies in this browser, newest first. */
 export async function listMyHikes() {
-  const uid = await currentUserId()
-  const rows = unwrap(await supabase.from('hikes').select(COLUMNS).eq('user_id', uid).order('created_at', { ascending: false }))
-  return rows.map(fromRow)
+  const all = (await run('readonly', (s) => s.getAll())) || []
+  return all.map(summary).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-/** One of your hikes plus its raw GPX. */
+/** One trophy plus its raw GPX. */
 export async function getMyHike(id) {
-  const uid = await currentUserId()
-  const hike = fromRow(unwrap(await supabase.from('hikes').select(COLUMNS).eq('id', id).eq('user_id', uid).single()))
-  const blob = unwrap(await supabase.storage.from('gpx').download(hike.gpxPath))
-  return { hike, gpxText: await blob.text() }
+  const rec = await run('readonly', (s) => s.get(id))
+  if (!rec) throw new Error('not found in this browser')
+  return { hike: summary(rec), gpxText: rec.gpxText }
 }
 
-/** Change your hike's name, saved style, or visibility. */
-export async function updateHike(id, { name, settings, isPublic } = {}) {
-  const uid = await currentUserId()
-  const patch = {}
-  if (name != null) patch.name = name.slice(0, 200)
-  if (settings != null) patch.settings = pickSavedSettings(settings)
-  if (isPublic != null) patch.is_public = isPublic
-  return fromRow(unwrap(await supabase.from('hikes').update(patch).eq('id', id).eq('user_id', uid).select(COLUMNS).single()))
+/** Change a trophy's name or saved style. */
+export async function updateHike(id, { name, settings } = {}) {
+  const rec = await run('readonly', (s) => s.get(id))
+  if (!rec) throw new Error('not found in this browser')
+  if (name != null) rec.name = name.slice(0, 200)
+  if (settings != null) rec.settings = pickSavedSettings(settings)
+  rec.updatedAt = new Date().toISOString()
+  await run('readwrite', (s) => s.put(rec))
+  return summary(rec)
 }
 
-/** Delete your hike: the row first, then its GPX file (an orphaned file is harmless; a row without its file is not). */
 export async function deleteHike(id) {
-  const uid = await currentUserId()
-  const { gpx_path } = unwrap(await supabase.from('hikes').select('gpx_path').eq('id', id).eq('user_id', uid).single())
-  unwrap(await supabase.from('hikes').delete().eq('id', id).eq('user_id', uid))
-  const { error } = await supabase.storage.from('gpx').remove([gpx_path])
-  if (error) console.warn('Hike deleted but its GPX file could not be removed:', error.message)
+  await run('readwrite', (s) => s.delete(id))
 }
 
-/** A public hike by its share slug, plus its GPX. Works signed out. */
-export async function getSharedHike(slug) {
-  const hike = fromRow(unwrap(await supabase.from('hikes').select(COLUMNS).eq('share_slug', slug).eq('is_public', true).single()))
-  const blob = unwrap(await supabase.storage.from('gpx').download(hike.gpxPath))
-  return { hike, gpxText: await blob.text() }
+/** Backup file with every trophy (including GPX), for moving to another browser or device. */
+export async function exportHikes() {
+  const hikes = (await run('readonly', (s) => s.getAll())) || []
+  return new Blob([JSON.stringify({ format: 'trail-trophy', version: 1, exportedAt: new Date().toISOString(), hikes })], { type: 'application/json' })
 }
 
-/** Public URL for a shared hike (works locally and under /trail-trophy/ on Pages). */
-export const shareUrl = (hike) => `${window.location.origin}${import.meta.env.BASE_URL}t/${hike.shareSlug}`
+/** Restore from a backup file. Trophies with the same id are overwritten. Returns how many were imported. */
+export async function importHikes(text) {
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error("That file isn't a Trail Trophy backup.") }
+  if (data?.format !== 'trail-trophy' || !Array.isArray(data.hikes)) throw new Error("That file isn't a Trail Trophy backup.")
+  const valid = data.hikes.filter((h) => h && typeof h.id === 'string' && typeof h.gpxText === 'string' && typeof h.name === 'string' && h.createdAt)
+  const db = await openDb()
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite')
+    const s = tx.objectStore(STORE)
+    valid.forEach((h) => s.put({ ...h, settings: pickSavedSettings(h.settings || {}) }))
+    tx.oncomplete = resolve
+    tx.onerror = tx.onabort = () => reject(new Error(tx.error?.message || 'Import failed'))
+  })
+  return valid.length
+}

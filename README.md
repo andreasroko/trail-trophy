@@ -4,7 +4,7 @@
 
 Drop a GPX file and get your hike as a miniature tabletop terrain diorama: a slice of earth with strata walls on a wooden plinth, a glowing trail ribbon, start/summit/finish markers, and a brass nameplate.
 
-Runs out of the box: **no API keys**. Terrain is procedural by default. An optional "Real DEM" mode pulls public AWS Terrarium elevation tiles, which need no key, and falls back to procedural terrain if you're offline.
+Runs out of the box: **no API keys, no accounts, no backend**. Terrain is procedural by default. An optional "Real DEM" mode pulls public AWS Terrarium elevation tiles, which need no key, and falls back to procedural terrain if you're offline.
 
 ## Run
 
@@ -16,25 +16,11 @@ npm run build      # production bundle in dist/
 
 Stack: React 18 · Vite 5 · Tailwind 3 · three.js 0.169 · @react-three/fiber 8 · drei 9 · @react-three/postprocessing 2 · lucide-react.
 
-## Accounts (Supabase)
+## Trophies & sharing (no server)
 
-Visitors can use the whole diorama signed out. Signing in, with a passwordless email link, lets you:
-- save hikes to **My trophies**, each at its own URL (`/h/:id`);
-- re-save a hike's style, or delete it;
-- make a hike **public** and share its read-only link (`/t/:slug`), where signed-in visitors can save a copy.
-
-Setup for your own copy:
-1. Create a Supabase project, then apply the schema: `npx supabase link --project-ref <ref>` and `npx supabase db push --remote`.
-2. Check the privacy rules with `npx supabase db query --remote -f supabase/tests/rls_check.sql`. The intentional error at the end should read `11 passed, 0 failed`.
-3. Copy `.env.example` to `.env.local` and fill in the project URL and publishable key. For GitHub Pages, set the repository variables `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
-4. In Supabase **Authentication → URL Configuration**, add your site and `http://localhost:5173/**` as redirect URLs.
-
-Without the env values, the account UI is hidden and the app works as a standalone viewer.
-
-**Data model:**
-- `public.hikes` holds the stats, saved style, `is_public` flag and `share_slug`.
-- The raw GPX lives in the private `gpx` storage bucket at `<user_id>/<hike_id>.gpx`.
-- Row Level Security limits each user to their own rows and files; public hikes are readable by anyone.
+Everything runs in the browser; the site is plain static files on GitHub Pages.
+- **My trophies**: saving a hike stores it, with its raw GPX and diorama style, in this browser's IndexedDB. Each trophy has its own URL (`/h/:id`) that works on the device that saved it. **Export / Import** in My trophies moves them between browsers as a JSON backup.
+- **Share links**: `/s#…` carries the hike itself. The track is thinned to at most 500 points, quantised (about 1 m), delta-encoded and deflate-compressed into the URL fragment, which is typically 2–4 KB. The fragment is never sent to the web server. Anyone who opens the link sees the diorama read-only and can save a copy. Links can't be revoked, since nothing is stored anywhere.
 
 ## Features
 

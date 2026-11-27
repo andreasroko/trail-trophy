@@ -1,14 +1,14 @@
 import { Suspense, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Mountain, Upload } from 'lucide-react'
 import Scene from './three/Scene.jsx'
 import { HikePanel, StylePanel, CameraBar } from './ui/Panels.jsx'
 import MobileSheet from './ui/MobileSheet.jsx'
 import { useIsMobile, useIsTouch } from './hooks/useMediaQuery.js'
-import { AccountButton, SignInDialog, SaveButton, TrophyShelf } from './ui/Account.jsx'
-import { saveHike, listMyHikes, getMyHike, updateHike, deleteHike, pickSavedSettings, getSharedHike, shareUrl } from './data/hikes.js'
-import { useAuth } from './data/auth.jsx'
+import { TrophiesButton, SaveButton, TrophyShelf } from './ui/Trophies.jsx'
+import { saveHike, listMyHikes, getMyHike, updateHike, deleteHike, pickSavedSettings, exportHikes, importHikes } from './data/hikes.js'
+import { decodeShare, shareUrl } from './data/share.js'
 import { parseGPX } from './lib/gpx.js'
 import { DEMO_HIKES } from './lib/demoHikes.js'
 import { THEMES } from './lib/themes.js'
@@ -37,11 +37,10 @@ export default function App() {
   const [scrub, setScrub] = useState(null)
   const [animKey, setAnimKey] = useState(0)
   const [pageDrag, setPageDrag] = useState(false)
-  const [signInOpen, setSignInOpen] = useState(false)
-  const closeSignIn = useCallback(() => setSignInOpen(false), [])
-  const { user, ready } = useAuth()
-  const { hikeId, shareSlug } = useParams() // /h/:hikeId = one of your hikes · /t/:shareSlug = someone's public hike
-  const readOnly = !!shareSlug
+  const { hikeId } = useParams() // /h/:hikeId = one of your trophies
+  const { pathname, hash } = useLocation()
+  const shareCode = pathname === '/s' ? hash.slice(1) : null // /s#<code> = a shared hike carried in the link
+  const readOnly = shareCode != null
   const navigate = useNavigate()
   const [shelf, setShelf] = useState({ open: false, list: [], loading: false, error: null })
   const [saving, setSaving] = useState(false)
@@ -67,15 +66,15 @@ export default function App() {
   const loadText = useCallback((text, demoId = null) => {
     try {
       showHike(text, { demoId })
-      if (hikeId || shareSlug) navigate('/')
+      if (hikeId || readOnly) navigate('/')
     } catch (e) {
       setError(e.message || 'Could not read that GPX file.')
     }
-  }, [showHike, hikeId, shareSlug, navigate])
+  }, [showHike, hikeId, readOnly, navigate])
 
   const onFile = useCallback((file) => {
     if (!/\.gpx$/i.test(file.name) && !/xml/.test(file.type)) {
-      setError('Please drop a .gpx file.')
+      setError('Please choose a .gpx file.')
       return
     }
     file.text().then((t) => loadText(t))
@@ -83,65 +82,72 @@ export default function App() {
 
   const onDemo = useCallback((d) => loadText(d.gpx(), d.id), [loadText])
 
-  // Boot with the first demo so the diorama renders immediately
-  // What to show for the current URL: the demo on "/", or one of your saved hikes on "/h/:id"
+  // What to show for the current URL: the demo on "/", a trophy on "/h/:id", a shared hike on "/s#..."
   useEffect(() => {
-    const showDemo = () => showHike(DEMO_HIKES[0].gpx(), { demoId: DEMO_HIKES[0].id })
-    if (shareSlug) {
-      if (hike?.shared?.shareSlug === shareSlug) return
-      let cancelled = false
-      getSharedHike(shareSlug)
-        .then(({ hike: shared, gpxText }) => {
-          if (cancelled) return
-          showHike(gpxText, { settings: shared.settings })
-          setHike((h) => ({ ...h, shared }))
-        })
-        .catch(() => {
-          if (cancelled) return
-          if (!hike) showDemo() // before setError: showing a hike clears errors
-          navigate('/', { replace: true })
-          setError("That shared hike doesn't exist or is no longer public.")
-        })
-      return () => { cancelled = true }
-    }
-    if (!hikeId) { if (!hike) showDemo(); return }
-    if (hike?.saved?.id === hikeId || !ready) return
-    if (!user) {
-      if (!hike) showDemo()
-      setError('Sign in to open this saved hike.')
-      setSignInOpen(true)
-      return
-    }
     let cancelled = false
-    getMyHike(hikeId)
-      .then(({ hike: saved, gpxText }) => {
-        if (cancelled) return
-        showHike(gpxText, { settings: saved.settings })
-        setHike((h) => ({ ...h, saved }))
-      })
-      .catch((e) => {
-        if (cancelled) return
-        if (!hike) showDemo() // before setError: showing a hike clears errors
-        setError(`Couldn't open that hike: ${e.message}`)
-      })
+    const showDemo = () => showHike(DEMO_HIKES[0].gpx(), { demoId: DEMO_HIKES[0].id })
+    const fail = (msg) => {
+      if (cancelled) return
+      if (!hike) showDemo() // before setError: showing a hike clears errors
+      navigate('/', { replace: true })
+      setError(msg)
+    }
+    if (shareCode != null) {
+      if (hike?.shareCode === shareCode) return
+      decodeShare(shareCode)
+        .then(({ gpxText, settings: style }) => {
+          if (cancelled) return
+          showHike(gpxText, { settings: style })
+          setHike((h) => ({ ...h, shareCode }))
+        })
+        .catch(() => fail("That share link is incomplete or broken. Ask for it again, or check it wasn't cut off."))
+    } else if (hikeId) {
+      if (hike?.saved?.id === hikeId) return
+      getMyHike(hikeId)
+        .then(({ hike: saved, gpxText }) => {
+          if (cancelled) return
+          showHike(gpxText, { settings: saved.settings })
+          setHike((h) => ({ ...h, saved }))
+        })
+        .catch(() => fail("That trophy isn't saved in this browser. Trophies live on the device that saved them; use Export / Import in My trophies to move them."))
+    } else if (!hike) {
+      showDemo()
+    }
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hikeId, shareSlug, ready, user?.id])
+  }, [hikeId, shareCode])
 
-  // Signing out leaves your private hike URL
-  useEffect(() => {
-    if (ready && !user && hike?.saved) {
-      setHike((h) => ({ ...h, saved: null }))
-      if (hikeId) navigate('/')
-    }
-  }, [ready, user, hike?.saved, hikeId, navigate])
-
-  const openShelf = async () => {
-    setShelf((s) => ({ ...s, open: true, loading: true, error: null }))
+  const refreshShelf = async (patch = {}) => {
     try {
-      setShelf({ open: true, list: await listMyHikes(), loading: false, error: null })
+      const list = await listMyHikes()
+      setShelf((s) => ({ ...s, list, loading: false, ...patch }))
     } catch (e) {
-      setShelf((s) => ({ ...s, loading: false, error: e.message }))
+      setShelf((s) => ({ ...s, loading: false, error: `Couldn't read your trophies: ${e.message}` }))
+    }
+  }
+  const openShelf = () => {
+    setShelf((s) => ({ ...s, open: true, loading: true, error: null }))
+    refreshShelf()
+  }
+
+  const exportShelf = async () => {
+    try {
+      const blob = await exportHikes()
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `trail-trophies-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+    } catch (e) {
+      setShelf((s) => ({ ...s, error: `Couldn't export: ${e.message}` }))
+    }
+  }
+  const importShelf = async (file) => {
+    try {
+      const n = await importHikes(await file.text())
+      await refreshShelf({ error: n ? null : 'That backup had no trophies in it.' })
+    } catch (e) {
+      setShelf((s) => ({ ...s, error: e.message }))
     }
   }
 
@@ -154,7 +160,7 @@ export default function App() {
     try {
       const saved = await saveHike({ track: hike.track, metrics, gpxText: hike.gpxText, settings })
       // Only attach if the same hike is still on screen
-      setHike((h) => (h && h.gpxText === hike.gpxText ? { ...h, saved } : h))
+      setHike((h) => (h && h.gpxText === hike.gpxText ? { ...h, saved, shareCode: null } : h))
       navigate(`/h/${saved.id}`)
     } catch (e) {
       setError(`Couldn't save: ${e.message}`)
@@ -174,18 +180,6 @@ export default function App() {
       setHike((h) => (h?.saved?.id === saved.id ? { ...h, saved } : h))
     } catch (e) {
       setError(`Couldn't save changes: ${e.message}`)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const togglePublic = async () => {
-    setSaving(true)
-    try {
-      const saved = await updateHike(hike.saved.id, { isPublic: !hike.saved.isPublic })
-      setHike((h) => (h?.saved?.id === saved.id ? { ...h, saved } : h))
-    } catch (e) {
-      setError(`Couldn't change sharing: ${e.message}`)
     } finally {
       setSaving(false)
     }
@@ -241,24 +235,18 @@ export default function App() {
   const accent = theme.trail.emissive
   const isMobile = useIsMobile()
   const isTouch = useIsTouch()
-  const openSignIn = () => setSignInOpen(true)
   const onPreset = (name) => setPreset({ name, n: Date.now() })
-  const accountProps = { dark, onSignIn: openSignIn, onOpenTrophies: openShelf }
 
   const saveSlot = (
     <SaveButton
       dark={dark}
-      signedIn={!!user}
       saved={!!hike?.saved}
       dirty={dirty}
       busy={saving}
-      onSaveStyle={saveStyle}
       readOnly={readOnly}
-      isPublic={!!hike?.saved?.isPublic}
-      link={hike?.saved?.isPublic ? shareUrl(hike.saved) : null}
-      onTogglePublic={togglePublic}
-      onSignIn={openSignIn}
       onSave={save}
+      onSaveStyle={saveStyle}
+      onShare={() => shareUrl(track, settings)}
     />
   )
   const hikeProps = {
@@ -307,7 +295,7 @@ export default function App() {
             <div className={`${dark ? 'glass-dark' : 'glass-light'} flex items-center gap-1.5 !rounded-full px-3 py-2 font-display text-sm font-semibold`}>
               <Mountain size={15} className={dark ? 'text-cyan-300' : 'text-orange-600'} /> Trail Trophy
             </div>
-            <AccountButton {...accountProps} compact />
+            <TrophiesButton dark={dark} onClick={openShelf} compact />
           </div>
           <MobileSheet
             dark={dark}
@@ -330,7 +318,7 @@ export default function App() {
           </div>
 
           <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
-            <AccountButton {...accountProps} />
+            <TrophiesButton dark={dark} onClick={openShelf} />
           </div>
 
           <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-3">
@@ -349,7 +337,6 @@ export default function App() {
         </div>
       )}
 
-      <SignInDialog open={signInOpen} onClose={closeSignIn} dark={dark} />
       <TrophyShelf
         {...shelf}
         dark={dark}
@@ -358,6 +345,8 @@ export default function App() {
         onClose={() => setShelf((s) => ({ ...s, open: false }))}
         onOpen={(h) => { setShelf((s) => ({ ...s, open: false })); navigate(`/h/${h.id}`) }}
         onDelete={removeHike}
+        onExport={exportShelf}
+        onImport={importShelf}
       />
 
       {pageDrag && (
