@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronUp, Footprints, Layers, Plus } from 'lucide-react'
 import { HikeDetails, HikeLoader, SharedBanner, StyleControls } from './Panels.jsx'
 import { fmtDist, fmtEle } from './format.js'
@@ -14,6 +14,9 @@ export default function MobileSheet({ dark, track, metrics, units, error, readOn
   const [tab, setTab] = useState(null) // null = collapsed
   const swipe = useRef(null)
   const open = tab != null
+  // A pin dropped on the 3D trail opens the Hike tab so it can be named right away
+  const editingPin = hikeProps.pinProps?.editingPin
+  useEffect(() => { if (editingPin) setTab('hike') }, [editingPin])
 
   const tabs = [
     { id: 'hike', label: 'Hike', icon: Footprints },
@@ -88,7 +91,7 @@ export default function MobileSheet({ dark, track, metrics, units, error, readOn
                 {readOnly && <SharedBanner dark={dark} onNew={onNew} />}
                 {error && <div className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-600 ring-1 ring-red-500/30">{error}</div>}
                 {/* Picking a climb/split closes the sheet so the highlighted stretch is visible */}
-                <HikeDetails dark={dark} {...hikeProps} hideName onFocus={(f) => { hikeProps.onFocus(f); if (f) setTab(null) }} />
+                <HikeDetails dark={dark} {...hikeProps} readOnly={readOnly} hideName onFocus={(f) => { hikeProps.onFocus(f); if (f) setTab(null) }} />
               </>
             )}
             {tab === 'style' && <StyleControls dark={dark} {...styleProps} />}

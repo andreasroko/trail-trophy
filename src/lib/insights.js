@@ -134,3 +134,27 @@ export function steepestClimbs(gp, count = 3) {
   }
   return picked.map(({ i, g }) => ({ d0: i * step, d1: (i + m) * step, grade: g, rise: ele[i + m] - ele[i] }))
 }
+
+/** Hours from the start to `d` metres: GPS time when the track has it, otherwise Naismith's rule. */
+export function timeAtDist(track, metrics, d) {
+  const { cumDist, cumGain } = metrics
+  if (metrics.durationSource === 'GPS time') {
+    const xs = [], ts = []
+    track.points.forEach((p, i) => { if (p.time != null) { xs.push(cumDist[i]); ts.push(p.time) } })
+    return Math.max(0, interpAt(xs, ts, d) - ts[0]) / 3.6e6
+  }
+  return d / 5000 + interpAt(cumDist, cumGain, d) / 600
+}
+
+export const MAX_PINS = 30
+export const MAX_PIN_LABEL = 40
+
+/** Pins from storage or a share link: keep only well-formed ones. */
+export function cleanPins(pins) {
+  if (!Array.isArray(pins)) return []
+  return pins
+    .filter((p) => p && Number.isFinite(p.f) && p.f >= 0 && p.f <= 1)
+    .slice(0, MAX_PINS)
+    .map((p, i) => ({ id: String(p.id || `p${i}`).slice(0, 16), f: p.f, label: String(p.label ?? '').slice(0, MAX_PIN_LABEL) }))
+    .sort((a, b) => a.f - b.f)
+}

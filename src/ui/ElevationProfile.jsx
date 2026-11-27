@@ -5,7 +5,7 @@ import { GRADE_LEGEND, gradeAtFrac, gradeCSS } from '../lib/insights.js'
 const W = 300, H = 84, PAD = 4
 
 /** Elevation profile; hovering scrubs the hiker bead along the 3D trail. */
-export default function ElevationProfile({ cumDist, eles, peakIdx, units, dark, accent, onScrub, grades, gradeColors, focus }) {
+export default function ElevationProfile({ cumDist, eles, peakIdx, units, dark, accent, onScrub, grades, gradeColors, focus, pins = [], pinMode, onPickTrail, pinColor }) {
   const [hover, setHover] = useState(null)
   const svgRef = useRef()
 
@@ -54,8 +54,12 @@ export default function ElevationProfile({ cumDist, eles, peakIdx, units, dark, 
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
-        className="h-[84px] w-full cursor-crosshair touch-none select-none"
+        className={`h-[84px] w-full cursor-crosshair touch-none select-none ${pinMode ? 'rounded-md ring-2 ring-offset-2 ring-offset-transparent ' + (dark ? 'ring-cyan-300/60' : 'ring-orange-500/60') : ''}`}
         onPointerMove={move}
+        onClick={pinMode ? (e) => {
+          const r = svgRef.current.getBoundingClientRect()
+          onPickTrail(Math.min(1, Math.max(0, ((e.clientX - r.left) / r.width * W - PAD) / (W - PAD * 2))))
+        } : undefined}
         onPointerDown={move}
         onPointerLeave={leave}
         onPointerUp={(e) => e.pointerType !== 'mouse' && leave()}
@@ -78,6 +82,17 @@ export default function ElevationProfile({ cumDist, eles, peakIdx, units, dark, 
         )}
         <path d={area} fill="url(#tt-prof)" />
         <path d={path} fill="none" stroke={stops ? 'url(#tt-grade)' : accent} strokeWidth={stops ? 2.4 : 1.8} strokeLinejoin="round" />
+        {pins.map((p) => {
+          const d = p.f * total
+          let a = 0, b = cumDist.length - 1
+          while (b - a > 1) { const m = (a + b) >> 1; cumDist[m] < d ? (a = m) : (b = m) }
+          return (
+            <g key={p.id}>
+              <line x1={sx(d)} x2={sx(d)} y1={sy(eles[a]) - 9} y2={sy(eles[a])} stroke={pinColor} strokeWidth="1.2" />
+              <circle cx={sx(d)} cy={sy(eles[a]) - 10} r="2.8" fill={pinColor} stroke="white" strokeWidth="1.2" />
+            </g>
+          )
+        })}
         <circle cx={sx(cumDist[peakIdx])} cy={sy(eles[peakIdx])} r="3.2" fill={accent} stroke="white" strokeWidth="1.5" />
         {hover && (
           <g>

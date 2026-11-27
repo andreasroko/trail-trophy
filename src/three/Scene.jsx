@@ -5,7 +5,7 @@ import { EffectComposer, Bloom, TiltShift2, Vignette } from '@react-three/postpr
 import * as THREE from 'three'
 import Terrain from './Terrain.jsx'
 import Trail, { useTrailPoints, pointAt } from './Trail.jsx'
-import Markers from './Markers.jsx'
+import Markers, { TrailPins } from './Markers.jsx'
 import Trees from './Trees.jsx'
 import { terrainY } from '../lib/terrain.js'
 
@@ -95,7 +95,7 @@ function Lights({ theme }) {
   )
 }
 
-export default function Scene({ field, geo, route, metrics, grades, focus, settings, theme, preset, scrub, animKey, title, subtitle, units, mapTexture }) {
+export default function Scene({ field, geo, route, metrics, grades, focus, pinMode, onPickTrail, pinColor, settings, theme, preset, scrub, animKey, title, subtitle, units, mapTexture }) {
   const { shape, exaggeration: exag } = settings
   const points = useTrailPoints(route, field, exag)
 
@@ -105,6 +105,17 @@ export default function Scene({ field, geo, route, metrics, grades, focus, setti
     return { start: at(w[0]), finish: at(w[w.length - 1]), summit: at(w[metrics.peakIdx]) }
   }, [geo, field, exag, metrics])
   const summitVec = useMemo(() => ({ x: markers.summit[0], y: markers.summit[1], z: markers.summit[2] }), [markers])
+
+  const pick = (e) => {
+    if (e.delta > 6) return // that was an orbit drag, not a tap
+    e.stopPropagation()
+    let best = -1, bestD = Infinity
+    points.forEach((p, i) => {
+      const d = (p.x - e.point.x) ** 2 + (p.z - e.point.z) ** 2
+      if (d < bestD) { bestD = d; best = i }
+    })
+    if (best >= 0 && bestD < 0.9 ** 2) onPickTrail(best / (points.length - 1))
+  }
 
   const scene = useThree((s) => s.scene)
   useEffect(() => {
@@ -119,9 +130,15 @@ export default function Scene({ field, geo, route, metrics, grades, focus, setti
   return (
     <>
       <Lights theme={theme} />
+      {/* In pin mode a click on the terrain or trail drops a pin at the nearest point of the trail */}
+      <group onClick={pinMode ? pick : undefined}>
       <Terrain field={field} shape={shape} exag={exag} theme={theme} contours={settings.contours} title={title} subtitle={subtitle} mapTexture={theme.mapTiles ? mapTexture : null} />
       {settings.trees && theme.id !== 'tactical' && !theme.mapTiles && <Trees field={field} shape={shape} exag={exag} route={route} theme={theme} />}
       <Trail points={points} theme={theme} scrub={scrub} animKey={animKey} grades={grades} gradeColors={settings.gradeColors} focus={focus} />
+      </group>
+      {settings.pins?.length > 0 && (
+        <TrailPins pins={settings.pins} points={points} pointAt={pointAt} color={pinColor} dark={theme.dark} showLabels={settings.labels} />
+      )}
       <Markers {...markers} isLoop={metrics.isLoop} theme={theme} showLabels={settings.labels} summitLabel={peakLabel} />
 
       <OrbitControls
